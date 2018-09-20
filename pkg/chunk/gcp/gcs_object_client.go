@@ -103,3 +103,8 @@ func (s *gcsObjectClient) getChunk(ctx context.Context, decodeContext *chunk.Dec
 
 	return input, nil
 }
+
+// NewScanner returns a Streamer
+func (s *gcsObjectClient) NewScanner() chunk.Scanner {
+	return nil
+}

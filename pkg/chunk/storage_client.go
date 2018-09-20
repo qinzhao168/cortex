@@ -20,6 +20,8 @@ type ObjectClient interface {
 
 	PutChunks(ctx context.Context, chunks []Chunk) error
 	GetChunks(ctx context.Context, chunks []Chunk) ([]Chunk, error)
+
+	NewScanner() Scanner
 }
 
 // WriteBatch represents a batch of writes.
@@ -37,4 +39,9 @@ type ReadBatchIterator interface {
 	Next() bool
 	RangeValue() []byte
 	Value() []byte
+}
+
+// Scanner represents the configuration for scanning chunks
+type Scanner interface {
+	Scan(ctx context.Context, reqs ScanRequest, forwardChan chan []Chunk) error
 }

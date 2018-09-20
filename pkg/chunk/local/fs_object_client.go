@@ -70,3 +70,8 @@ func (f *fsObjectClient) getChunk(_ context.Context, decodeContext *chunk.Decode
 
 	return c, nil
 }
+
+// NewScanner returns a Scanner
+func (f *fsObjectClient) NewScanner() chunk.Scanner {
+	return nil
+}

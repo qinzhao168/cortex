@@ -132,3 +132,8 @@ func (a s3ObjectClient) putS3Chunk(ctx context.Context, key string, buf []byte) 
 		return err
 	})
 }
+
+// NewScanner returns a chunk Scanner
+func (a s3ObjectClient) NewScanner() chunk.Scanner {
+	return nil
+}

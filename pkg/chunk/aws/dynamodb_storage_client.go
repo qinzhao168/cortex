@@ -867,3 +867,8 @@ func awsSessionFromURL(awsURL *url.URL) (client.ConfigProvider, error) {
 	config = config.WithMaxRetries(0) // We do our own retries, so we can monitor them
 	return session.NewSession(config)
 }
+
+// NewScanner returns a Streamer
+func (a dynamoDBStorageClient) NewScanner() chunk.Scanner {
+	return nil
+}

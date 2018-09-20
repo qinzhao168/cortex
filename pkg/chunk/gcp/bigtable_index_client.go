@@ -7,12 +7,15 @@ import (
 	"encoding/hex"
 	"flag"
 	"fmt"
+	"io/ioutil"
 	"strings"
 	"time"
 
 	"cloud.google.com/go/bigtable"
 	ot "github.com/opentracing/opentracing-go"
 	otlog "github.com/opentracing/opentracing-go/log"
+	"golang.org/x/oauth2/google"
+	"google.golang.org/api/option"
 
 	"github.com/pkg/errors"
 
@@ -34,6 +37,7 @@ const (
 type Config struct {
 	Project  string `yaml:"project"`
 	Instance string `yaml:"instance"`
+	KeyFile  string `yaml:"key_file"`
 
 	GRPCClientConfig grpcclient.Config `yaml:"grpc_client_config"`
 
@@ -50,6 +54,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.StringVar(&cfg.Instance, "bigtable.instance", "", "Bigtable instance ID.")
 	f.BoolVar(&cfg.TableCacheEnabled, "bigtable.table-cache.enabled", true, "If enabled, once a tables info is fetched, it is cached.")
 	f.DurationVar(&cfg.TableCacheExpiration, "bigtable.table-cache.expiration", 30*time.Minute, "Duration to cache tables before checking again.")
+	f.StringVar(&cfg.KeyFile, "bigtable.keyfile", "", "Path to file containing a G")
 
 	cfg.GRPCClientConfig.RegisterFlags("bigtable", f)
 }
@@ -72,6 +77,17 @@ type storageClientV1 struct {
 // NewStorageClientV1 returns a new v1 StorageClient.
 func NewStorageClientV1(ctx context.Context, cfg Config, schemaCfg chunk.SchemaConfig) (chunk.IndexClient, error) {
 	opts := toOptions(cfg.GRPCClientConfig.DialOption(bigtableInstrumentation()))
+
+	if cfg.KeyFile != "" {
+		jsonKey, err := ioutil.ReadFile(cfg.KeyFile)
+		if err != nil {
+			return nil, err
+		}
+
+		token, err := google.JWTConfigFromJSON(jsonKey, bigtable.Scope)
+		opts = append(opts, option.WithTokenSource(token.TokenSource(ctx)))
+	}
+
 	client, err := bigtable.NewClient(ctx, cfg.Project, cfg.Instance, opts...)
 	if err != nil {
 		return nil, err

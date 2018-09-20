@@ -5,12 +5,15 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"math"
 	"io/ioutil"
 	"strings"
 	"time"
 
 	"github.com/gocql/gocql"
 	"github.com/pkg/errors"
+	ot "github.com/opentracing/opentracing-go"
+	otlog "github.com/opentracing/opentracing-go/log"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/chunk/util"
@@ -373,4 +376,141 @@ func (s *StorageClient) getChunk(ctx context.Context, decodeContext *chunk.Decod
 func (s *StorageClient) DeleteChunk(ctx context.Context, chunkID string) error {
 	// ToDo: implement this to support deleting chunks from Cassandra
 	return chunk.ErrMethodNotImplemented
+}
+
+func parseHash(hash string) (string, error) {
+	if !strings.Contains(hash, "/") {
+		return "", fmt.Errorf("cannot parse legacy ID for migration")
+	}
+	parts := strings.Split(hash, "/")
+	if len(parts) != 2 {
+		return "", fmt.Errorf("unable to parse hash ID %v", hash)
+	}
+	return parts[0], nil
+}
+
+type scanner struct {
+	session *gocql.Session
+}
+
+// NewScanner returns a Streamer
+func (s *StorageClient) NewScanner() chunk.Scanner {
+	return &scanner{
+		session: s.session,
+	}
+}
+
+// TODO query errors should format with shard numbers not cassandra token values
+func (s *scanner) Scan(ctx context.Context, req chunk.ScanRequest, out chan []chunk.Chunk) error {
+	sp, ctx := ot.StartSpanFromContext(ctx, "Stream")
+	defer sp.Finish()
+
+	query := generateScanQuery(req)
+
+	decodeContext := chunk.NewDecodeContext()
+	sp.LogFields(otlog.String("id", query.id))
+
+	var (
+		q     *gocql.Query
+		hash  string
+		value []byte
+		errs  []error
+	)
+
+	q = s.session.Query(fmt.Sprintf("SELECT hash, value FROM %s WHERE Token(hash) >= ? AND Token(hash) < ?", query.tableName), query.tokenFrom, query.tokenTo)
+	iter := q.WithContext(ctx).Iter()
+	chunkMap := map[string][]chunk.Chunk{}
+
+	for iter.Scan(&hash, &value) {
+		userID, err := parseHash(hash)
+		if err != nil {
+			errs = append(errs, err)
+			continue
+		}
+		if query.filterUserID && userID != query.userID { // User ID filtering must be done client side in cassandra
+			continue
+		}
+		c, err := chunk.ParseExternalKey(userID, hash)
+		if err != nil {
+			errs = append(errs, err)
+			continue
+		}
+		err = c.Decode(decodeContext, value)
+		if err != nil {
+			errs = append(errs, err)
+			continue
+		}
+		_, ok := chunkMap[userID+":"+c.Fingerprint.String()]
+		if !ok {
+			chunkMap[userID+":"+c.Fingerprint.String()] = []chunk.Chunk{}
+		}
+		chunkMap[userID+":"+c.Fingerprint.String()] = append(chunkMap[userID+":"+c.Fingerprint.String()], c)
+	}
+	err := iter.Close()
+	if err != nil {
+		return fmt.Errorf("stream failed, %v, current query %v_%v_%v, with user %v", err, query.tableName, query.tokenFrom, query.tokenTo, query.userID)
+	}
+	for _, err := range errs {
+		if err != nil {
+			return fmt.Errorf("stream failed, %v, current query %v_%v_%v, with user %v", err, query.tableName, query.tokenFrom, query.tokenTo, query.userID)
+		}
+	}
+	for _, chunks := range chunkMap {
+		select {
+		case <-ctx.Done():
+			return fmt.Errorf("stream canceled, current query %v_%v_%v, with user %v", query.tableName, query.tokenFrom, query.tokenTo, query.userID)
+		case out <- chunks:
+			continue
+		}
+	}
+	return nil
+}
+
+func generateScanQuery(req chunk.ScanRequest) scanQuery {
+	var (
+		id        string
+		tokenFrom string
+		tokenTo   string
+	)
+
+	if req.Shard < 0 {
+		id = fmt.Sprintf("%v_%v_all", req.Table, req.User)
+		tokenFrom = fmt.Sprintf("%d", getToken(0))
+		tokenTo = fmt.Sprintf("%d", getToken(240))
+	} else {
+		id = fmt.Sprintf("%v_%v_%v", req.Table, req.User, req.Shard)
+		shard := int64(req.Shard)
+		tokenFrom = fmt.Sprintf("%d", getToken(shard-1))
+		tokenTo = fmt.Sprintf("%d", getToken(shard))
+	}
+
+	var filterUserID = true
+	if req.User == "*" {
+		filterUserID = false
+	}
+
+	return scanQuery{
+		id:           id,
+		filterUserID: filterUserID,
+		userID:       req.User,
+		tableName:    req.Table,
+		tokenFrom:    tokenFrom,
+		tokenTo:      tokenTo,
+	}
+}
+
+type scanQuery struct {
+	id           string
+	filterUserID bool
+	userID       string
+	tableName    string
+	tokenFrom    string
+	tokenTo      string
+}
+
+func getToken(i int64) int64 {
+	if i == 240 {
+		return math.MaxInt64
+	}
+	return math.MinInt64 + (76861433640456465 * (i))
 }

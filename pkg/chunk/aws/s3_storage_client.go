@@ -185,3 +185,8 @@ func (a *S3ObjectClient) List(ctx context.Context, prefix string) ([]chunk.Stora
 
 	return storageObjects, nil
 }
+
+// NewScanner returns a chunk Scanner
+func (a *S3ObjectClient) NewScanner() chunk.Scanner {
+	return nil
+}

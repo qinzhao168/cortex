@@ -75,3 +75,13 @@ type StorageObject struct {
 	Key        string
 	ModifiedAt time.Time
 }
+
+// Scanner represents the configuration for scanning chunks
+type Scanner interface {
+	Scan(ctx context.Context, reqs ScanRequest, forwardChan chan []Chunk) error
+}
+
+// ScannerProvider allows creating a new Scanner
+type ScannerProvider interface {
+	NewScanner() Scanner
+}

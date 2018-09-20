@@ -132,3 +132,8 @@ func (s *GCSObjectClient) DeleteObject(ctx context.Context, chunkID string) erro
 	// ToDo: implement this to support deleting chunks from GCS
 	return chunk.ErrMethodNotImplemented
 }
+
+// NewScanner returns a Streamer
+func (s *GCSObjectClient) NewScanner() chunk.Scanner {
+	return nil
+}

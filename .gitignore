@@ -1,5 +1,7 @@
 cmd/test-exporter/test-exporter
 cmd/cortex/cortex
+cmd/migrate-reader/migrate-reader
+cmd/migrate-writer/migrate-writer
 .uptodate
 .pkg
 .cache

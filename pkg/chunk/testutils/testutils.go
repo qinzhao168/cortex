@@ -15,10 +15,6 @@ import (
 	"github.com/cortexproject/cortex/pkg/ingester/client"
 )
 
-const (
-	userID = "userID"
-)
-
 // Fixture type for per-backend testing.
 type Fixture interface {
 	Name() string
@@ -59,21 +55,28 @@ func Setup(fixture Fixture, tableName string) (chunk.IndexClient, chunk.Client, 
 }
 
 // CreateChunks creates some chunks for testing
-func CreateChunks(startIndex, batchSize int, start model.Time) ([]string, []chunk.Chunk, error) {
+func CreateChunks(startIndex, batchSize int, options ...CreateChunkOptions) ([]string, []chunk.Chunk, error) {
+	req := &createChunkRequest{
+		userID: "userID",
+		from:   model.Now(),
+	}
+	for _, opt := range options {
+		opt.set(req)
+	}
 	keys := []string{}
 	chunks := []chunk.Chunk{}
 	for j := 0; j < batchSize; j++ {
-		chunk := dummyChunkFor(start, labels.Labels{
+		chunk := dummyChunkFor(req.from, labels.Labels{
 			{Name: model.MetricNameLabel, Value: "foo"},
 			{Name: "index", Value: strconv.Itoa(startIndex*batchSize + j)},
-		})
+		}, req.userID)
 		chunks = append(chunks, chunk)
 		keys = append(keys, chunk.ExternalKey())
 	}
 	return keys, chunks, nil
 }
 
-func dummyChunkFor(now model.Time, metric labels.Labels) chunk.Chunk {
+func dummyChunkFor(now model.Time, metric labels.Labels, userID string) chunk.Chunk {
 	cs := promchunk.New()
 	cs.Add(model.SamplePair{Timestamp: now, Value: 0})
 	chunk := chunk.NewChunk(
@@ -90,4 +93,34 @@ func dummyChunkFor(now model.Time, metric labels.Labels) chunk.Chunk {
 		panic(err)
 	}
 	return chunk
+}
+
+// CreateChunkOptions allows options to be passed when creating chunks
+type CreateChunkOptions interface {
+	set(req *createChunkRequest)
+}
+
+type createChunkRequest struct {
+	userID string
+	from   model.Time
+}
+
+// From applies a new user ID to chunks created by CreateChunks
+func From(from model.Time) FromOpt { return FromOpt(from) }
+
+// FromOpt is used to set the from field of the chunks
+type FromOpt model.Time
+
+func (f FromOpt) set(req *createChunkRequest) {
+	req.from = model.Time(f)
+}
+
+// User applies a new user ID to chunks created by CreateChunks
+func User(user string) UserOpt { return UserOpt(user) }
+
+// UserOpt is used to set the user for a set of chunks
+type UserOpt string
+
+func (u UserOpt) set(req *createChunkRequest) {
+	req.userID = string(u)
 }

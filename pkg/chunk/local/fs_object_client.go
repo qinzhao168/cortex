@@ -132,3 +132,8 @@ func (f *FSObjectClient) DeleteChunksBefore(ctx context.Context, ts time.Time) e
 		return nil
 	})
 }
+
+// NewScanner returns a Scanner
+func (f *FSObjectClient) NewScanner() chunk.Scanner {
+	return nil
+}

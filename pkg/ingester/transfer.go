@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/go-kit/kit/log/level"
+	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"google.golang.org/grpc"
@@ -199,12 +200,12 @@ func (i *Ingester) TransferOut(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	defer c.(io.Closer).Close()
+	defer c.Close()
 
 	ctx = user.InjectOrgID(ctx, "-1")
 	stream, err := c.TransferChunks(ctx)
 	if err != nil {
-		return err
+		return errors.Wrap(err, "TransferChunks")
 	}
 
 	for userID, state := range i.userStates.cp() {
@@ -219,7 +220,7 @@ func (i *Ingester) TransferOut(ctx context.Context) error {
 			chunks, err := toWireChunks(pair.series.chunkDescs)
 			if err != nil {
 				state.fpLocker.Unlock(pair.fp)
-				return err
+				return errors.Wrap(err, "toWireChunks")
 			}
 
 			err = stream.Send(&client.TimeSeriesChunk{
@@ -230,7 +231,7 @@ func (i *Ingester) TransferOut(ctx context.Context) error {
 			})
 			state.fpLocker.Unlock(pair.fp)
 			if err != nil {
-				return err
+				return errors.Wrap(err, "Send")
 			}
 
 			sentChunks.Add(float64(len(chunks)))
@@ -239,7 +240,7 @@ func (i *Ingester) TransferOut(ctx context.Context) error {
 
 	_, err = stream.CloseAndRecv()
 	if err != nil {
-		return err
+		return errors.Wrap(err, "CloseAndRecv")
 	}
 
 	// Close & empty all the flush queues, to unblock waiting workers.
@@ -272,8 +273,8 @@ func (i *Ingester) findTargetIngester(ctx context.Context) (*ring.IngesterDesc, 
 		}
 		defer c.Close()
 
-		_, err = c.Check(ctx, &grpc_health_v1.HealthCheckRequest{}, grpc.FailFast(true))
-		return ingester, nil
+		_, err = c.Check(user.InjectOrgID(ctx, "0"), &grpc_health_v1.HealthCheckRequest{}, grpc.FailFast(true))
+		return ingester, err
 	}
 
 	deadline := time.NewTimer(i.cfg.SearchPendingFor)
@@ -289,7 +290,8 @@ func (i *Ingester) findTargetIngester(ctx context.Context) (*ring.IngesterDesc, 
 			ingester, err := findIngester(ctx)
 			cancel()
 			if err != nil {
-				level.Debug(util.Logger).Log("msg", "Error looking for pending ingester", "err", err)
+				level.Warn(util.Logger).Log("msg", "Error looking for pending ingester", "err", err)
+				continue
 			}
 			return ingester, nil
 

@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/go-kit/kit/log/level"
+	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 
@@ -187,6 +188,26 @@ func fromWireChunks(wireChunks []client.Chunk) ([]*desc, error) {
 // TransferOut finds an ingester in PENDING state and transfers our chunks to it.
 // Called as part of the ingester shutdown process.
 func (i *Ingester) TransferOut(ctx context.Context) error {
+	backoff := util.NewBackoff(ctx, util.BackoffConfig{
+		MinBackoff: 100 * time.Millisecond,
+		MaxBackoff: 1 * time.Second,
+		MaxRetries: i.cfg.MaxTransferRetries,
+	})
+
+	for backoff.Ongoing() {
+		err := i.transferOut(ctx)
+		if err == nil {
+			return nil
+		}
+
+		level.Error(util.Logger).Log("msg", "transfer failed", "err", err)
+		backoff.Wait()
+	}
+
+	return backoff.Err()
+}
+
+func (i *Ingester) transferOut(ctx context.Context) error {
 	targetIngester, err := i.findTargetIngester(ctx)
 	if err != nil {
 		return fmt.Errorf("cannot find ingester to transfer chunks to: %v", err)
@@ -197,12 +218,12 @@ func (i *Ingester) TransferOut(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	defer c.(io.Closer).Close()
+	defer c.Close()
 
 	ctx = user.InjectOrgID(ctx, "-1")
 	stream, err := c.TransferChunks(ctx)
 	if err != nil {
-		return err
+		return errors.Wrap(err, "TransferChunks")
 	}
 
 	for userID, state := range i.userStates.cp() {
@@ -217,7 +238,7 @@ func (i *Ingester) TransferOut(ctx context.Context) error {
 			chunks, err := toWireChunks(pair.series.chunkDescs)
 			if err != nil {
 				state.fpLocker.Unlock(pair.fp)
-				return err
+				return errors.Wrap(err, "toWireChunks")
 			}
 
 			err = stream.Send(&client.TimeSeriesChunk{
@@ -228,7 +249,7 @@ func (i *Ingester) TransferOut(ctx context.Context) error {
 			})
 			state.fpLocker.Unlock(pair.fp)
 			if err != nil {
-				return err
+				return errors.Wrap(err, "Send")
 			}
 
 			sentChunks.Add(float64(len(chunks)))
@@ -237,7 +258,7 @@ func (i *Ingester) TransferOut(ctx context.Context) error {
 
 	_, err = stream.CloseAndRecv()
 	if err != nil {
-		return err
+		return errors.Wrap(err, "CloseAndRecv")
 	}
 
 	// Close & empty all the flush queues, to unblock waiting workers.
@@ -252,7 +273,7 @@ func (i *Ingester) TransferOut(ctx context.Context) error {
 
 // findTargetIngester finds an ingester in PENDING state.
 func (i *Ingester) findTargetIngester(ctx context.Context) (*ring.IngesterDesc, error) {
-	findIngester := func() (*ring.IngesterDesc, error) {
+	findIngester := func(ctx context.Context) (*ring.IngesterDesc, error) {
 		ringDesc, err := i.lifecycler.KVStore.Get(ctx, ring.ConsulKey)
 		if err != nil {
 			return nil, err
@@ -266,19 +287,30 @@ func (i *Ingester) findTargetIngester(ctx context.Context) (*ring.IngesterDesc, 
 		return &ingesters[0], nil
 	}
 
-	deadline := time.Now().Add(i.cfg.SearchPendingFor)
+	deadline := time.NewTimer(i.cfg.SearchPendingFor)
+	defer deadline.Stop()
+
+	ticker := time.NewTicker(i.cfg.SearchPendingFor / pendingSearchIterations)
+	defer ticker.Stop()
+
 	for {
-		ingester, err := findIngester()
-		if err != nil {
-			level.Debug(util.Logger).Log("msg", "Error looking for pending ingester", "err", err)
-			if time.Now().Before(deadline) {
-				time.Sleep(i.cfg.SearchPendingFor / pendingSearchIterations)
+		select {
+		case <-ticker.C:
+			ctx, cancel := context.WithTimeout(ctx, i.cfg.SearchPendingFor/pendingSearchIterations)
+			ingester, err := findIngester(ctx)
+			cancel()
+			if err != nil {
+				level.Warn(util.Logger).Log("msg", "Error looking for pending ingester", "err", err)
 				continue
-			} else {
-				level.Warn(util.Logger).Log("msg", "Could not find pending ingester before deadline", "err", err)
-				return nil, err
 			}
+			return ingester, nil
+
+		case <-deadline.C:
+			level.Warn(util.Logger).Log("msg", "Could not find pending ingester before deadline")
+			return nil, fmt.Errorf("could not find pending ingester before deadline")
+
+		case <-ctx.Done():
+			return nil, ctx.Err()
 		}
-		return ingester, nil
 	}
 }

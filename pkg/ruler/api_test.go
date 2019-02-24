@@ -28,7 +28,7 @@ var (
 	app        *API
 	database   db.DB
 	counter    int
-	privateAPI RulesAPI
+	privateAPI RuleStore
 )
 
 // setup sets up the environment for the tests.

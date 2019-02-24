@@ -29,26 +29,25 @@ func main() {
 				middleware.ServerUserHeaderInterceptor,
 			},
 		}
-		ringConfig        ring.Config
+		lifecyclerConfig  ring.LifecyclerConfig
 		distributorConfig distributor.Config
 		clientConfig      client.Config
 		limits            validation.Limits
 
-		rulerConfig       ruler.Config
-		chunkStoreConfig  chunk.StoreConfig
-		schemaConfig      chunk.SchemaConfig
-		storageConfig     storage.Config
-		configStoreConfig ruler.ConfigStoreConfig
-		querierConfig     querier.Config
+		rulerConfig      ruler.Config
+		ruleStoreConfig  ruler.RuleStoreConfig
+		chunkStoreConfig chunk.StoreConfig
+		schemaConfig     chunk.SchemaConfig
+		storageConfig    storage.Config
+		querierConfig    querier.Config
 	)
 
 	// Setting the environment variable JAEGER_AGENT_HOST enables tracing
 	trace := tracing.NewFromEnv("ruler")
 	defer trace.Close()
 
-	flagext.RegisterFlags(&serverConfig, &ringConfig, &distributorConfig, &clientConfig, &limits,
-		&rulerConfig, &chunkStoreConfig, &storageConfig, &schemaConfig, &configStoreConfig,
-		&querierConfig)
+	flagext.RegisterFlags(&serverConfig, &lifecyclerConfig, &distributorConfig, &clientConfig, &limits,
+		&rulerConfig, &ruleStoreConfig, &chunkStoreConfig, &storageConfig, &schemaConfig, &querierConfig)
 	flag.Parse()
 
 	util.InitLogger(&serverConfig)
@@ -59,8 +58,9 @@ func main() {
 	util.CheckFatal("", err)
 	defer chunkStore.Stop()
 
-	r, err := ring.New(ringConfig)
+	r, err := ring.New(lifecyclerConfig.RingConfig)
 	util.CheckFatal("initializing ring", err)
+
 	prometheus.MustRegister(r)
 	defer r.Stop()
 
@@ -68,19 +68,19 @@ func main() {
 	util.CheckFatal("initializing distributor", err)
 	defer dist.Stop()
 
+	ruleStore, err := ruler.NewRuleStore(ruleStoreConfig)
+	util.CheckFatal("error initializing rules API", err)
+
 	querierConfig.MaxConcurrent = rulerConfig.NumWorkers
 	querierConfig.Timeout = rulerConfig.GroupTimeout
 	queryable, engine := querier.New(querierConfig, dist, chunkStore)
-	rlr, err := ruler.NewRuler(rulerConfig, engine, queryable, dist)
-	util.CheckFatal("initializing ruler", err)
+
+	rulerConfig.LifecyclerConfig = lifecyclerConfig
+	rulerConfig.LifecyclerConfig.ListenPort = &serverConfig.GRPCListenPort
+	rulerConfig.LifecyclerConfig.RingConfig = ruler.CreateRulerRingConfig(lifecyclerConfig.RingConfig)
+	rlr, err := ruler.NewRuler(rulerConfig, engine, queryable, dist, ruleStore)
+	util.CheckFatal("error initializing ruler", err)
 	defer rlr.Stop()
-
-	rulesAPI, err := ruler.NewRulesAPI(configStoreConfig)
-	util.CheckFatal("initializing rules API", err)
-
-	rulerServer, err := ruler.NewServer(rulerConfig, rlr, rulesAPI)
-	util.CheckFatal("initializing ruler server", err)
-	defer rulerServer.Stop()
 
 	server, err := server.New(serverConfig)
 	util.CheckFatal("initializing server", err)
@@ -89,9 +89,10 @@ func main() {
 	// Only serve the API for setting & getting rules configs if we're not
 	// serving configs from the configs API. Allows for smoother
 	// migration. See https://github.com/cortexproject/cortex/issues/619
-	if configStoreConfig.ConfigsAPIURL.URL == nil {
-		a, err := ruler.NewAPIFromConfig(configStoreConfig.DBConfig)
+	if ruleStoreConfig.ConfigsAPIURL.URL == nil {
+		a, err := ruler.NewAPIFromConfig(ruleStoreConfig.DBConfig)
 		util.CheckFatal("initializing public rules API", err)
+
 		a.RegisterRoutes(server.HTTP)
 	}
 

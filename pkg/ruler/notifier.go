@@ -5,13 +5,18 @@ import (
 	"crypto/md5"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"sync"
 
 	gklog "github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
+	config_util "github.com/prometheus/common/config"
+	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/config"
 	"github.com/prometheus/prometheus/discovery"
 	sd_config "github.com/prometheus/prometheus/discovery/config"
+	"github.com/prometheus/prometheus/discovery/dns"
+	"github.com/prometheus/prometheus/discovery/targetgroup"
 	"github.com/prometheus/prometheus/notifier"
 )
 
@@ -74,4 +79,67 @@ func (rn *rulerNotifier) stop() {
 	rn.sdCancel()
 	rn.notifier.Stop()
 	rn.wg.Wait()
+}
+
+// Builds a Prometheus config.Config from a ruler.Config with just the required
+// options to configure notifications to Alertmanager.
+func buildNotifierConfig(rulerConfig *Config) (*config.Config, error) {
+	if rulerConfig.AlertmanagerURL.URL == nil {
+		return &config.Config{}, nil
+	}
+
+	u := rulerConfig.AlertmanagerURL
+	var sdConfig sd_config.ServiceDiscoveryConfig
+	if rulerConfig.AlertmanagerDiscovery {
+		if !strings.Contains(u.Host, "_tcp.") {
+			return nil, fmt.Errorf("When alertmanager-discovery is on, host name must be of the form _portname._tcp.service.fqdn (is %q)", u.Host)
+		}
+		dnsSDConfig := dns.SDConfig{
+			Names:           []string{u.Host},
+			RefreshInterval: model.Duration(rulerConfig.AlertmanagerRefreshInterval),
+			Type:            "SRV",
+			Port:            0, // Ignored, because of SRV.
+		}
+		sdConfig = sd_config.ServiceDiscoveryConfig{
+			DNSSDConfigs: []*dns.SDConfig{&dnsSDConfig},
+		}
+	} else {
+		sdConfig = sd_config.ServiceDiscoveryConfig{
+			StaticConfigs: []*targetgroup.Group{
+				{
+					Targets: []model.LabelSet{
+						{
+							model.AddressLabel: model.LabelValue(u.Host),
+						},
+					},
+				},
+			},
+		}
+	}
+	amConfig := &config.AlertmanagerConfig{
+		Scheme:                 u.Scheme,
+		PathPrefix:             u.Path,
+		Timeout:                model.Duration(rulerConfig.NotificationTimeout),
+		ServiceDiscoveryConfig: sdConfig,
+	}
+
+	promConfig := &config.Config{
+		AlertingConfig: config.AlertingConfig{
+			AlertmanagerConfigs: []*config.AlertmanagerConfig{amConfig},
+		},
+	}
+
+	if u.User != nil {
+		amConfig.HTTPClientConfig = config_util.HTTPClientConfig{
+			BasicAuth: &config_util.BasicAuth{
+				Username: u.User.Username(),
+			},
+		}
+
+		if password, isSet := u.User.Password(); isSet {
+			amConfig.HTTPClientConfig.BasicAuth.Password = config_util.Secret(password)
+		}
+	}
+
+	return promConfig, nil
 }

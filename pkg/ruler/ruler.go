@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
-	"strings"
 	"sync"
 	"time"
 
@@ -14,12 +13,7 @@ import (
 	"github.com/go-kit/kit/log/level"
 	opentracing "github.com/opentracing/opentracing-go"
 	"github.com/prometheus/client_golang/prometheus"
-	config_util "github.com/prometheus/common/config"
-	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/config"
-	sd_config "github.com/prometheus/prometheus/discovery/config"
-	"github.com/prometheus/prometheus/discovery/dns"
-	"github.com/prometheus/prometheus/discovery/targetgroup"
 	"github.com/prometheus/prometheus/notifier"
 	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/rules"
@@ -29,6 +23,7 @@ import (
 	"golang.org/x/net/context/ctxhttp"
 
 	"github.com/cortexproject/cortex/pkg/distributor"
+	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/weaveworks/common/instrument"
@@ -96,6 +91,11 @@ type Config struct {
 	NotificationTimeout time.Duration
 	// Timeout for rule group evaluation, including sending result to ingester
 	GroupTimeout time.Duration
+
+	EnableSharding bool
+
+	SearchPendingFor time.Duration
+	LifecyclerConfig ring.LifecyclerConfig
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet
@@ -113,18 +113,26 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	if flag.Lookup("promql.lookback-delta") == nil {
 		flag.DurationVar(&promql.LookbackDelta, "promql.lookback-delta", promql.LookbackDelta, "Time since the last sample after which a time series is considered stale and ignored by expression evaluations.")
 	}
+	f.DurationVar(&cfg.SearchPendingFor, "ruler.search-pending-for", 30*time.Second, "Time to spend searching for a pending ruler when shutting down.")
+	f.BoolVar(&cfg.EnableSharding, "ruler.enable-sharding", false, "Distribute rule evaluation using ring backend")
 }
 
 // Ruler evaluates rules.
 type Ruler struct {
-	engine        *promql.Engine
-	queryable     storage.Queryable
-	pusher        Pusher
-	alertURL      *url.URL
-	notifierCfg   *config.Config
-	queueCapacity int
-	groupTimeout  time.Duration
-	metrics       *rules.Metrics
+	engine           *promql.Engine
+	queryable        storage.Queryable
+	pusher           Pusher
+	alertURL         *url.URL
+	notifierCfg      *config.Config
+	queueCapacity    int
+	groupTimeout     time.Duration
+	metrics          *rules.Metrics
+	SearchPendingFor time.Duration
+
+	scheduler *scheduler
+	workers   []worker
+
+	lifecycler *ring.Lifecycler
 
 	// Per-user notifiers with separate queues.
 	notifiersMtx sync.Mutex
@@ -132,12 +140,13 @@ type Ruler struct {
 }
 
 // NewRuler creates a new ruler from a distributor and chunk store.
-func NewRuler(cfg Config, engine *promql.Engine, queryable storage.Queryable, d *distributor.Distributor) (*Ruler, error) {
+func NewRuler(cfg Config, engine *promql.Engine, queryable storage.Queryable, d *distributor.Distributor, rulesAPI RuleStore) (*Ruler, error) {
 	ncfg, err := buildNotifierConfig(&cfg)
 	if err != nil {
 		return nil, err
 	}
-	return &Ruler{
+
+	ruler := &Ruler{
 		engine:        engine,
 		queryable:     queryable,
 		pusher:        d,
@@ -147,70 +156,61 @@ func NewRuler(cfg Config, engine *promql.Engine, queryable storage.Queryable, d 
 		notifiers:     map[string]*rulerNotifier{},
 		groupTimeout:  cfg.GroupTimeout,
 		metrics:       rules.NewGroupMetrics(prometheus.DefaultRegisterer),
-	}, nil
+	}
+
+	ruler.scheduler = newScheduler(rulesAPI, cfg.EvaluationInterval, cfg.EvaluationInterval, ruler.newGroup)
+
+	if cfg.EnableSharding {
+		ruler.lifecycler, err = ring.NewLifecycler(cfg.LifecyclerConfig, ruler)
+		if err != nil {
+			return nil, err
+		}
+
+		readRing, err := ring.New(cfg.LifecyclerConfig.RingConfig)
+		if err != nil {
+			return nil, err
+		}
+		ruler.scheduler.enableSharding = true
+		ruler.scheduler.readRing = readRing
+	}
+
+	if cfg.NumWorkers <= 0 {
+		return nil, fmt.Errorf("must have at least 1 worker, got %d", cfg.NumWorkers)
+	}
+
+	workers := make([]worker, cfg.NumWorkers)
+	for i := 0; i < cfg.NumWorkers; i++ {
+		workers[i] = newWorker(ruler)
+	}
+
+	ruler.workers = workers
+	go ruler.run()
+	go ruler.scheduler.Run()
+
+	return ruler, nil
 }
 
-// Builds a Prometheus config.Config from a ruler.Config with just the required
-// options to configure notifications to Alertmanager.
-func buildNotifierConfig(rulerConfig *Config) (*config.Config, error) {
-	if rulerConfig.AlertmanagerURL.URL == nil {
-		return &config.Config{}, nil
+// Run the ruler.
+func (r *Ruler) run() {
+	go r.scheduler.Run()
+	for _, w := range r.workers {
+		go w.Run()
 	}
+	level.Info(util.Logger).Log("msg", "ruler up and running")
+}
 
-	u := rulerConfig.AlertmanagerURL
-	var sdConfig sd_config.ServiceDiscoveryConfig
-	if rulerConfig.AlertmanagerDiscovery {
-		if !strings.Contains(u.Host, "_tcp.") {
-			return nil, fmt.Errorf("When alertmanager-discovery is on, host name must be of the form _portname._tcp.service.fqdn (is %q)", u.Host)
-		}
-		dnsSDConfig := dns.SDConfig{
-			Names:           []string{u.Host},
-			RefreshInterval: model.Duration(rulerConfig.AlertmanagerRefreshInterval),
-			Type:            "SRV",
-			Port:            0, // Ignored, because of SRV.
-		}
-		sdConfig = sd_config.ServiceDiscoveryConfig{
-			DNSSDConfigs: []*dns.SDConfig{&dnsSDConfig},
-		}
-	} else {
-		sdConfig = sd_config.ServiceDiscoveryConfig{
-			StaticConfigs: []*targetgroup.Group{
-				{
-					Targets: []model.LabelSet{
-						{
-							model.AddressLabel: model.LabelValue(u.Host),
-						},
-					},
-				},
-			},
-		}
+// Stop stops the Ruler.
+func (r *Ruler) Stop() {
+	r.notifiersMtx.Lock()
+	for _, n := range r.notifiers {
+		n.stop()
 	}
-	amConfig := &config.AlertmanagerConfig{
-		Scheme:                 u.Scheme,
-		PathPrefix:             u.Path,
-		Timeout:                model.Duration(rulerConfig.NotificationTimeout),
-		ServiceDiscoveryConfig: sdConfig,
+	r.notifiersMtx.Unlock()
+
+	for _, w := range r.workers {
+		w.Stop()
 	}
-
-	promConfig := &config.Config{
-		AlertingConfig: config.AlertingConfig{
-			AlertmanagerConfigs: []*config.AlertmanagerConfig{amConfig},
-		},
-	}
-
-	if u.User != nil {
-		amConfig.HTTPClientConfig = config_util.HTTPClientConfig{
-			BasicAuth: &config_util.BasicAuth{
-				Username: u.User.Username(),
-			},
-		}
-
-		if password, isSet := u.User.Password(); isSet {
-			amConfig.HTTPClientConfig.BasicAuth.Password = config_util.Secret(password)
-		}
-	}
-
-	return promConfig, nil
+	r.scheduler.Stop()
 }
 
 func (r *Ruler) newGroup(userID string, groupName string, rls []rules.Rule) (*group, error) {
@@ -318,56 +318,4 @@ func (r *Ruler) Evaluate(userID string, item *workItem) {
 	}
 
 	rulesProcessed.Add(float64(len(item.group.Rules())))
-}
-
-// Stop stops the Ruler.
-func (r *Ruler) Stop() {
-	r.notifiersMtx.Lock()
-	defer r.notifiersMtx.Unlock()
-
-	for _, n := range r.notifiers {
-		n.stop()
-	}
-}
-
-// Server is a rules server.
-type Server struct {
-	scheduler *scheduler
-	workers   []worker
-}
-
-// NewServer makes a new rule processing server.
-func NewServer(cfg Config, ruler *Ruler, rulesAPI RulesAPI) (*Server, error) {
-	// TODO: Separate configuration for polling interval.
-	s := newScheduler(rulesAPI, cfg.EvaluationInterval, cfg.EvaluationInterval, ruler.newGroup)
-	if cfg.NumWorkers <= 0 {
-		return nil, fmt.Errorf("must have at least 1 worker, got %d", cfg.NumWorkers)
-	}
-	workers := make([]worker, cfg.NumWorkers)
-	for i := 0; i < cfg.NumWorkers; i++ {
-		workers[i] = newWorker(&s, ruler)
-	}
-	srv := Server{
-		scheduler: &s,
-		workers:   workers,
-	}
-	go srv.run()
-	return &srv, nil
-}
-
-// Run the server.
-func (s *Server) run() {
-	go s.scheduler.Run()
-	for _, w := range s.workers {
-		go w.Run()
-	}
-	level.Info(util.Logger).Log("msg", "ruler up and running")
-}
-
-// Stop the server.
-func (s *Server) Stop() {
-	for _, w := range s.workers {
-		w.Stop()
-	}
-	s.scheduler.Stop()
 }

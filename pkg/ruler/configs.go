@@ -12,8 +12,8 @@ import (
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 )
 
-// ConfigStoreConfig says where we can find the ruler configs.
-type ConfigStoreConfig struct {
+// RuleStoreConfig says where we can find the ruler configs.
+type RuleStoreConfig struct {
 	DBConfig db.Config
 
 	// DEPRECATED
@@ -25,21 +25,21 @@ type ConfigStoreConfig struct {
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet
-func (cfg *ConfigStoreConfig) RegisterFlags(f *flag.FlagSet) {
+func (cfg *RuleStoreConfig) RegisterFlags(f *flag.FlagSet) {
 	cfg.DBConfig.RegisterFlags(f)
 	f.Var(&cfg.ConfigsAPIURL, "ruler.configs.url", "DEPRECATED. URL of configs API server.")
 	f.DurationVar(&cfg.ClientTimeout, "ruler.client-timeout", 5*time.Second, "DEPRECATED. Timeout for requests to Weave Cloud configs service.")
 }
 
-// RulesAPI is what the ruler needs from a config store to process rules.
-type RulesAPI interface {
+// RuleStore is what the ruler needs from a config store to process rules.
+type RuleStore interface {
 	// GetConfigs returns all Cortex configurations from a configs API server
 	// that have been updated after the given configs.ID was last updated.
 	GetConfigs(since configs.ID) (map[string]configs.VersionedRulesConfig, error)
 }
 
-// NewRulesAPI creates a new RulesAPI.
-func NewRulesAPI(cfg ConfigStoreConfig) (RulesAPI, error) {
+// NewRuleStore creates a new RuleStore.
+func NewRuleStore(cfg RuleStoreConfig) (RuleStore, error) {
 	// All of this falderal is to allow for a smooth transition away from
 	// using the configs server and toward directly connecting to the database.
 	// See https://github.com/cortexproject/cortex/issues/619
@@ -62,7 +62,7 @@ type configsClient struct {
 	Timeout time.Duration
 }
 
-// GetConfigs implements RulesAPI.
+// GetConfigs implements RuleStore.
 func (c configsClient) GetConfigs(since configs.ID) (map[string]configs.VersionedRulesConfig, error) {
 	suffix := ""
 	if since != 0 {
@@ -87,7 +87,7 @@ type dbStore struct {
 	db db.RulesDB
 }
 
-// GetConfigs implements RulesAPI.
+// GetConfigs implements RuleStore.
 func (d dbStore) GetConfigs(since configs.ID) (map[string]configs.VersionedRulesConfig, error) {
 	if since == 0 {
 		return d.db.GetAllRulesConfigs()

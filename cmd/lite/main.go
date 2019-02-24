@@ -36,8 +36,8 @@ var (
 	distributorConfig distributor.Config
 	querierConfig     querier.Config
 	ingesterConfig    ingester.Config
-	configStoreConfig ruler.ConfigStoreConfig
 	rulerConfig       ruler.Config
+	ruleStoreConfig   ruler.RuleStoreConfig
 	schemaConfig      chunk.SchemaConfig
 	storageConfig     storage.Config
 	tbmConfig         chunk.TableManagerConfig
@@ -93,16 +93,15 @@ func main() {
 
 	queryable, engine := querier.New(querierConfig, dist, chunkStore)
 
-	if configStoreConfig.ConfigsAPIURL.String() != "" || configStoreConfig.DBConfig.URI != "" {
-		rulesAPI, err := ruler.NewRulesAPI(configStoreConfig)
-		util.CheckFatal("initializing ruler config store", err)
-		rlr, err := ruler.NewRuler(rulerConfig, engine, queryable, dist)
-		util.CheckFatal("initializing ruler", err)
-		defer rlr.Stop()
+	if ruleStoreConfig.ConfigsAPIURL.String() != "" || ruleStoreConfig.DBConfig.URI != "" {
+		ruleStore, err := ruler.NewRuleStore(ruleStoreConfig)
+		util.CheckFatal("initializing ruler api", err)
 
-		rulerServer, err := ruler.NewServer(rulerConfig, rlr, rulesAPI)
-		util.CheckFatal("initializing ruler server", err)
-		defer rulerServer.Stop()
+
+		rlr, err := ruler.NewRuler(rulerConfig, engine, queryable, dist, ruleStore)
+		util.CheckFatal("initializing ruler", err)
+
+		defer rlr.Stop()
 	}
 
 	api := v1.NewAPI(
@@ -136,9 +135,18 @@ func main() {
 	// Only serve the API for setting & getting rules configs if we're not
 	// serving configs from the configs API. Allows for smoother
 	// migration. See https://github.com/cortexproject/cortex/issues/619
+<<<<<<< HEAD
 	if configStoreConfig.ConfigsAPIURL.URL == nil {
 		a, err := ruler.NewAPIFromConfig(configStoreConfig.DBConfig)
 		util.CheckFatal("initializing public rules API", err)
+=======
+	if ruleStoreConfig.ConfigsAPIURL.URL == nil {
+		a, err := ruler.NewAPIFromConfig(ruleStoreConfig.DBConfig)
+		if err != nil {
+			level.Error(util.Logger).Log("msg", "error initializing public rules API", "err", err)
+			os.Exit(1)
+		}
+>>>>>>> 7fb9a72e... add sharding to ruler
 		a.RegisterRoutes(server.HTTP)
 	}
 
@@ -174,7 +182,7 @@ func getConfigsFromCommandLine() {
 	// Ingester needs to know our gRPC listen port.
 	ingesterConfig.LifecyclerConfig.ListenPort = &serverConfig.GRPCListenPort
 	flagext.RegisterFlags(&serverConfig, &chunkStoreConfig, &distributorConfig, &querierConfig,
-		&ingesterConfig, &configStoreConfig, &rulerConfig, &storageConfig, &schemaConfig,
+		&ingesterConfig, &rulerConfig, &ruleStoreConfig, &storageConfig, &schemaConfig,
 		&ingesterClientConfig, &limitsConfig, &tbmConfig)
 	flag.BoolVar(&unauthenticated, "unauthenticated", false, "Set to true to disable multitenancy.")
 	flag.Parse()

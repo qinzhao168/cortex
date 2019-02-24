@@ -16,6 +16,7 @@ import (
 	"github.com/prometheus/prometheus/rules"
 
 	"github.com/cortexproject/cortex/pkg/configs"
+	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/weaveworks/common/instrument"
 )
@@ -36,6 +37,11 @@ var (
 		Name:      "configs",
 		Help:      "How many configs the scheduler knows about.",
 	})
+	totalRuleGroups = prometheus.NewGauge(prometheus.GaugeOpts{
+		Namespace: "cortex",
+		Name:      "ruler_groups_total",
+		Help:      "How many rule groups the scheduler is currently evaluating",
+	})
 	configUpdates = prometheus.NewCounter(prometheus.CounterOpts{
 		Namespace: "cortex",
 		Name:      "scheduler_config_updates_total",
@@ -47,6 +53,11 @@ var (
 		Help:      "Time spent requesting configs.",
 		Buckets:   prometheus.DefBuckets,
 	}, []string{"operation", "status_code"}))
+	ringCheckErrors = prometheus.NewCounter(prometheus.CounterOpts{
+		Namespace: "cortex",
+		Name:      "scheduler_ring_check_errors_total",
+		Help:      "Number of errors that have occurend when checking the ring for ownership",
+	})
 )
 
 func init() {
@@ -58,6 +69,7 @@ func init() {
 type workItem struct {
 	userID     string
 	groupName  string
+	hash       uint32
 	group      *group
 	scheduled  time.Time
 	generation configs.ID // a monotonically increasing number used to spot out of date work items
@@ -75,7 +87,7 @@ func (w workItem) Scheduled() time.Time {
 
 // Defer returns a work item with updated rules, rescheduled to a later time.
 func (w workItem) Defer(interval time.Duration) workItem {
-	return workItem{w.userID, w.groupName, w.group, w.scheduled.Add(interval), w.generation}
+	return workItem{w.userID, w.groupName, w.hash, w.group, w.scheduled.Add(interval), w.generation}
 }
 
 func (w workItem) String() string {
@@ -90,7 +102,7 @@ type userConfig struct {
 type groupFactory func(userID string, groupName string, rls []rules.Rule) (*group, error)
 
 type scheduler struct {
-	rulesAPI           RulesAPI
+	ruleStore          RuleStore
 	evaluationInterval time.Duration // how often we re-evaluate each rule set
 	q                  *SchedulingQueue
 
@@ -101,14 +113,18 @@ type scheduler struct {
 	groupFn      groupFactory          // function to create a new group
 	sync.RWMutex
 
+	enableSharding bool
+	readRing       ring.ReadRing
+	addr           string
+
 	stop chan struct{}
 	done chan struct{}
 }
 
 // newScheduler makes a new scheduler.
-func newScheduler(rulesAPI RulesAPI, evaluationInterval, pollInterval time.Duration, groupFn groupFactory) scheduler {
-	return scheduler{
-		rulesAPI:           rulesAPI,
+func newScheduler(ruleStore RuleStore, evaluationInterval, pollInterval time.Duration, groupFn groupFactory) *scheduler {
+	return &scheduler{
+		ruleStore:          ruleStore,
 		evaluationInterval: evaluationInterval,
 		pollInterval:       pollInterval,
 		q:                  NewSchedulingQueue(clockwork.NewRealClock()),
@@ -180,7 +196,7 @@ func (s *scheduler) poll() (map[string]configs.VersionedRulesConfig, error) {
 	var cfgs map[string]configs.VersionedRulesConfig
 	err := instrument.CollectedRequest(context.Background(), "Configs.GetConfigs", configsRequestDuration, instrument.ErrorCode, func(_ context.Context) error {
 		var err error
-		cfgs, err = s.rulesAPI.GetConfigs(configID) // Warning: this will produce an incorrect result if the configID ever overflows
+		cfgs, err = s.ruleStore.GetConfigs(configID) // Warning: this will produce an incorrect result if the configID ever overflows
 		return err
 	})
 	if err != nil {
@@ -251,6 +267,7 @@ func (s *scheduler) addUserConfig(now time.Time, hasher hash.Hash64, generation 
 	s.cfgs[userID] = userConfig{rules: rulesByGroup, generation: generation}
 	s.Unlock()
 
+	ringHasher := fnv.New32a()
 	evalTime := s.computeNextEvalTime(hasher, now, userID)
 	workItems := []workItem{}
 	for group, rules := range rulesByGroup {
@@ -263,8 +280,19 @@ func (s *scheduler) addUserConfig(now time.Time, hasher hash.Hash64, generation 
 			level.Warn(util.Logger).Log("msg", "scheduler: failed to create group for user", "user_id", userID, "group", group, "err", err)
 			return
 		}
-		workItems = append(workItems, workItem{userID, group, g, evalTime, generation})
+		ringHasher.Reset()
+		ringHasher.Write([]byte(userID + ":" + group))
+		hash := ringHasher.Sum32()
+		if !s.enableSharding || s.checkRule(hash) {
+			workItems = append(workItems, workItem{userID, group, hash, g, evalTime, generation})
+		}
 	}
+
+	for _, i := range workItems {
+		totalRuleGroups.Inc()
+		s.addWorkItem(i)
+	}
+	workItems = append(workItems, workItem{userID, group, g, evalTime, generation})
 
 	for _, i := range workItems {
 		s.addWorkItem(i)
@@ -307,9 +335,34 @@ func (s *scheduler) workItemDone(i workItem) {
 	if !found || len(currentRules) == 0 || i.generation < config.generation {
 		// Warning: this test will produce an incorrect result if the generation ever overflows
 		level.Debug(util.Logger).Log("msg", "scheduler: stopping item", "user_id", i.userID, "group", i.groupName, "found", found, "len", len(currentRules))
+		totalRuleGroups.Dec()
 		return
 	}
+
+	if s.enableSharding {
+		owned := s.checkRule(i.hash)
+		if !owned {
+			totalRuleGroups.Dec()
+			level.Debug(util.Logger).Log("msg", "scheduler: item no longer owned", "user_id", i.userID, "group", i.groupName, "found", found, "len", len(currentRules))
+			return
+		}
+	}
+
 	next := i.Defer(s.evaluationInterval)
 	level.Debug(util.Logger).Log("msg", "scheduler: work item rescheduled", "item", i, "time", next.scheduled.Format(timeLogFormat))
 	s.addWorkItem(next)
+}
+
+func (s *scheduler) checkRule(hash uint32) bool {
+	rulers, err := s.readRing.Get(hash, ring.Read)
+	// If an error occurs keep evaluating a rule as if it is owned
+	// better to have extra datapoints for a rule than none at all
+	if err != nil {
+		ringCheckErrors.Inc()
+		return true
+	}
+	if rulers.Ingesters[0].Addr == s.addr {
+		return true
+	}
+	return false
 }

@@ -21,9 +21,9 @@ type worker struct {
 	terminated chan struct{}
 }
 
-func newWorker(scheduler *scheduler, ruler *Ruler) worker {
+func newWorker(ruler *Ruler) worker {
 	return worker{
-		scheduler:  scheduler,
+		scheduler:  ruler.scheduler,
 		ruler:      ruler,
 		done:       make(chan struct{}),
 		terminated: make(chan struct{}),

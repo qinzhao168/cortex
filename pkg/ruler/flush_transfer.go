@@ -24,7 +24,8 @@ func (r *Ruler) TransferOut(ctx context.Context) error {
 	return nil
 }
 
-// findTargetRuler finds an ingester in PENDING state.
+// findTargetRuler finds an ingester in PENDING state. Before terminating
+// the ruler must be sure there is a replacement ruler being created
 func (r *Ruler) findTargetRuler(ctx context.Context) (*ring.IngesterDesc, error) {
 	findRuler := func() (*ring.IngesterDesc, error) {
 		ringDesc, err := r.lifecycler.KVStore.Get(ctx, ring.ConsulKey)
@@ -59,8 +60,12 @@ func (r *Ruler) findTargetRuler(ctx context.Context) (*ring.IngesterDesc, error)
 
 // StopIncomingRequests is called during the shutdown process.
 // Ensure no new rules are scheduled on this Ruler
+// Currently the api is decoupled from the scheduler, no action
+// is required.
 func (r *Ruler) StopIncomingRequests() {}
 
 // Flush triggers a flush of all the work items currently
-// scheduled by the ruler
+// scheduled by the ruler, currently every ruler will
+// query a backend rule store for it's rules so no
+// flush is required.
 func (r *Ruler) Flush() {}

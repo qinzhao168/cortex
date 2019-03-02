@@ -259,7 +259,11 @@ func (u *userState) removeSeries(fp model.Fingerprint, metric labelPairs) {
 
 // forSeriesMatching passes all series matching the given matchers to the provided callback.
 // Deals with locking and the quirks of zero-length matcher values.
-func (u *userState) forSeriesMatching(ctx context.Context, allMatchers []*labels.Matcher, callback func(context.Context, model.Fingerprint, *memorySeries) error) error {
+// There are 2 callbacks. callback1 is called for each series, where the lock is held.
+// callback2 is called at certain intervals specified by callback2Interval,
+// i.e. callback2() after callback2Interval calls of callback1().
+func (u *userState) forSeriesMatching(ctx context.Context, allMatchers []*labels.Matcher, append func(context.Context, model.Fingerprint, *memorySeries) error,
+	send func(context.Context) error, batchSize int) error {
 	log, ctx := spanlogger.New(ctx, "forSeriesMatching")
 	defer log.Finish()
 
@@ -273,7 +277,7 @@ func (u *userState) forSeriesMatching(ctx context.Context, allMatchers []*labels
 
 	// fps is sorted, lock them in order to prevent deadlocks
 outer:
-	for _, fp := range fps {
+	for i, fp := range fps {
 		if err := ctx.Err(); err != nil {
 			return err
 		}
@@ -292,12 +296,21 @@ outer:
 			}
 		}
 
-		err := callback(ctx, fp, series)
+		err := append(ctx, fp, series)
 		u.fpLocker.Unlock(fp)
 		if err != nil {
 			return err
 		}
+
+		if batchSize > 0 && i+1%batchSize == 0 && send != nil {
+			if err = send(ctx); err != nil {
+				return nil
+			}
+		}
 	}
 
+	if send != nil {
+		return send(ctx)
+	}
 	return nil
 }

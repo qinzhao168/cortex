@@ -9,7 +9,6 @@ import (
 	"sync"
 	"time"
 
-	gklog "github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
 	opentracing "github.com/opentracing/opentracing-go"
 	"github.com/prometheus/client_golang/prometheus"
@@ -119,6 +118,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 
 // Ruler evaluates rules.
 type Ruler struct {
+	cfg              Config
 	engine           *promql.Engine
 	queryable        storage.Queryable
 	pusher           Pusher
@@ -133,6 +133,7 @@ type Ruler struct {
 	workers   []worker
 
 	lifecycler *ring.Lifecycler
+	ring       *ring.Ring
 
 	// Per-user notifiers with separate queues.
 	notifiersMtx sync.Mutex
@@ -147,6 +148,7 @@ func NewRuler(cfg Config, engine *promql.Engine, queryable storage.Queryable, d 
 	}
 
 	ruler := &Ruler{
+		cfg:           cfg,
 		engine:        engine,
 		queryable:     queryable,
 		pusher:        d,
@@ -160,18 +162,18 @@ func NewRuler(cfg Config, engine *promql.Engine, queryable storage.Queryable, d 
 
 	ruler.scheduler = newScheduler(rulesAPI, cfg.EvaluationInterval, cfg.EvaluationInterval, ruler.newGroup)
 
+	// If sharding is enabled, create/join a ring to distribute tokens to
+	// the ruler
 	if cfg.EnableSharding {
 		ruler.lifecycler, err = ring.NewLifecycler(cfg.LifecyclerConfig, ruler)
 		if err != nil {
 			return nil, err
 		}
 
-		readRing, err := ring.New(cfg.LifecyclerConfig.RingConfig)
+		ruler.ring, err = ring.New(cfg.LifecyclerConfig.RingConfig)
 		if err != nil {
 			return nil, err
 		}
-		ruler.scheduler.enableSharding = true
-		ruler.scheduler.readRing = readRing
 	}
 
 	if cfg.NumWorkers <= 0 {
@@ -201,6 +203,8 @@ func (r *Ruler) run() {
 
 // Stop stops the Ruler.
 func (r *Ruler) Stop() {
+	r.lifecycler.Shutdown()
+
 	r.notifiersMtx.Lock()
 	for _, n := range r.notifiers {
 		n.stop()
@@ -301,6 +305,13 @@ func (r *Ruler) getOrCreateNotifier(userID string) (*notifier.Manager, error) {
 func (r *Ruler) Evaluate(userID string, item *workItem) {
 	ctx := user.InjectOrgID(context.Background(), userID)
 	logger := util.WithContext(ctx, util.Logger)
+	if r.cfg.EnableSharding {
+		owned := r.checkRule(item.hash)
+		if !owned {
+			level.Debug(util.Logger).Log("msg", "ruler: skipping evaluation, not owned", "user_id", item.userID, "group", item.groupName)
+			return
+		}
+	}
 	level.Debug(logger).Log("msg", "evaluating rules...", "num_rules", len(item.group.Rules()))
 	ctx, cancelTimeout := context.WithTimeout(ctx, r.groupTimeout)
 	instrument.CollectedRequest(ctx, "Evaluate", evalDuration, nil, func(ctx native_ctx.Context) error {
@@ -318,4 +329,40 @@ func (r *Ruler) Evaluate(userID string, item *workItem) {
 	}
 
 	rulesProcessed.Add(float64(len(item.group.Rules())))
+}
+
+func (r *Ruler) checkRule(hash uint32) bool {
+	rlrs, err := r.ring.Get(hash, ring.Read)
+	// If an error occurs keep evaluating a rule as if it is owned
+	// better to have extra datapoints for a rule than none at all
+	if err != nil {
+		ringCheckErrors.Inc()
+		return true
+	}
+	if rlrs.Ingesters[0].Addr == r.lifecycler.Addr {
+		return true
+	}
+	level.Debug(util.Logger).Log("msg", "rule not owned, address does not match", "owner", rlrs.Ingesters[0].Addr, "current", r.cfg.LifecyclerConfig.Addr)
+	return false
+}
+
+func (r *Ruler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
+	if r.cfg.EnableSharding {
+		r.ring.ServeHTTP(w, req)
+	} else {
+		var unshardedPage = `
+			<!DOCTYPE html>
+			<html>
+				<head>
+					<meta charset="UTF-8">
+					<title>Cortex Ruler Status</title>
+				</head>
+				<body>
+					<h1>Cortex Ruler Status</h1>
+					<p>Ruler running with shards disabled</p>
+				</body>
+			</html>`
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(unshardedPage))
+	}
 }

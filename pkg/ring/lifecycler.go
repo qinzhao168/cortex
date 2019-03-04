@@ -104,7 +104,7 @@ type Lifecycler struct {
 
 	// These values are initialised at startup, and never change
 	ID   string
-	addr string
+	Addr string
 
 	// We need to remember the ingester state just in case consul goes away and comes
 	// back empty.  And it changes during lifecycle of ingester.
@@ -143,7 +143,7 @@ func NewLifecycler(cfg LifecyclerConfig, flushTransferer FlushTransferer) (*Life
 		flushTransferer: flushTransferer,
 		KVStore:         store,
 
-		addr: fmt.Sprintf("%s:%d", addr, port),
+		Addr: fmt.Sprintf("%s:%d", addr, port),
 		ID:   cfg.ID,
 
 		quit:      make(chan struct{}),
@@ -371,7 +371,7 @@ func (i *Lifecycler) initRing(ctx context.Context) error {
 		if !ok {
 			// Either we are a new ingester, or consul must have restarted
 			level.Info(util.Logger).Log("msg", "entry not found in ring, adding with no tokens")
-			ringDesc.AddIngester(i.ID, i.addr, []uint32{}, i.GetState(), i.cfg.NormaliseTokens)
+			ringDesc.AddIngester(i.ID, i.Addr, []uint32{}, i.GetState(), i.cfg.NormaliseTokens)
 			return ringDesc, true, nil
 		}
 
@@ -403,7 +403,7 @@ func (i *Lifecycler) autoJoin(ctx context.Context) error {
 
 		newTokens := GenerateTokens(i.cfg.NumTokens-len(myTokens), takenTokens)
 		i.setState(ACTIVE)
-		ringDesc.AddIngester(i.ID, i.addr, newTokens, i.GetState(), i.cfg.NormaliseTokens)
+		ringDesc.AddIngester(i.ID, i.Addr, newTokens, i.GetState(), i.cfg.NormaliseTokens)
 
 		tokens := append(myTokens, newTokens...)
 		sort.Sort(sortableUint32(tokens))
@@ -428,11 +428,11 @@ func (i *Lifecycler) updateConsul(ctx context.Context) error {
 		if !ok {
 			// consul must have restarted
 			level.Info(util.Logger).Log("msg", "found empty ring, inserting tokens")
-			ringDesc.AddIngester(i.ID, i.addr, i.getTokens(), i.GetState(), i.cfg.NormaliseTokens)
+			ringDesc.AddIngester(i.ID, i.Addr, i.getTokens(), i.GetState(), i.cfg.NormaliseTokens)
 		} else {
 			ingesterDesc.Timestamp = time.Now().Unix()
 			ingesterDesc.State = i.GetState()
-			ingesterDesc.Addr = i.addr
+			ingesterDesc.Addr = i.Addr
 			ringDesc.Ingesters[i.ID] = ingesterDesc
 		}
 

@@ -97,5 +97,6 @@ func main() {
 	}
 
 	server.HTTP.Handle("/ring", r)
+	server.HTTP.Handle("/ruler_ring", rlr)
 	server.Run()
 }

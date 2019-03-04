@@ -16,7 +16,6 @@ import (
 	"github.com/prometheus/prometheus/rules"
 
 	"github.com/cortexproject/cortex/pkg/configs"
-	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/weaveworks/common/instrument"
 )
@@ -112,10 +111,6 @@ type scheduler struct {
 	latestConfig configs.ID            // # of last update received from config
 	groupFn      groupFactory          // function to create a new group
 	sync.RWMutex
-
-	enableSharding bool
-	readRing       ring.ReadRing
-	addr           string
 
 	stop chan struct{}
 	done chan struct{}
@@ -282,9 +277,7 @@ func (s *scheduler) addUserConfig(now time.Time, hasher hash.Hash64, generation 
 			ringHasher.Reset()
 			ringHasher.Write([]byte(userID + ":" + group))
 			hash := ringHasher.Sum32()
-			if !s.enableSharding || s.checkRule(hash) {
-				workItems = append(workItems, workItem{userID, group, hash, g, evalTime, generation})
-			}
+			workItems = append(workItems, workItem{userID, group, hash, g, evalTime, generation})
 		}
 
 		for _, i := range workItems {
@@ -334,30 +327,7 @@ func (s *scheduler) workItemDone(i workItem) {
 		return
 	}
 
-	if s.enableSharding {
-		owned := s.checkRule(i.hash)
-		if !owned {
-			totalRuleGroups.Dec()
-			level.Debug(util.Logger).Log("msg", "scheduler: item no longer owned", "user_id", i.userID, "group", i.groupName, "found", found, "len", len(currentRules))
-			return
-		}
-	}
-
 	next := i.Defer(s.evaluationInterval)
 	level.Debug(util.Logger).Log("msg", "scheduler: work item rescheduled", "item", i, "time", next.scheduled.Format(timeLogFormat))
 	s.addWorkItem(next)
-}
-
-func (s *scheduler) checkRule(hash uint32) bool {
-	rulers, err := s.readRing.Get(hash, ring.Read)
-	// If an error occurs keep evaluating a rule as if it is owned
-	// better to have extra datapoints for a rule than none at all
-	if err != nil {
-		ringCheckErrors.Inc()
-		return true
-	}
-	if rulers.Ingesters[0].Addr == s.addr {
-		return true
-	}
-	return false
 }

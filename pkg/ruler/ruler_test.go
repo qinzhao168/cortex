@@ -11,11 +11,18 @@ import (
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/promql"
 
+	"github.com/cortexproject/cortex/pkg/configs"
 	"github.com/cortexproject/cortex/pkg/querier"
 	"github.com/prometheus/prometheus/notifier"
 	"github.com/stretchr/testify/assert"
 	"github.com/weaveworks/common/user"
 )
+
+type mockRuleStore struct{}
+
+func (m *mockRuleStore) GetConfigs(since configs.ID) (map[string]configs.VersionedRulesConfig, error) {
+	return map[string]configs.VersionedRulesConfig{}, nil
+}
 
 func newTestRuler(t *testing.T, alertmanagerURL string) *Ruler {
 	var cfg Config
@@ -34,7 +41,7 @@ func newTestRuler(t *testing.T, alertmanagerURL string) *Ruler {
 		Timeout:       2 * time.Minute,
 	})
 	queryable := querier.NewQueryable(nil, nil, nil, 0)
-	ruler, err := NewRuler(cfg, engine, queryable, nil, nil)
+	ruler, err := NewRuler(cfg, engine, queryable, nil, &mockRuleStore{})
 	if err != nil {
 		t.Fatal(err)
 	}

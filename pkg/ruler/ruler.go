@@ -60,7 +60,7 @@ var (
 	ringCheckErrors = prometheus.NewCounter(prometheus.CounterOpts{
 		Namespace: "cortex",
 		Name:      "ruler_ring_check_errors_total",
-		Help:      "Number of errors that have occured when checking the ring for ownership",
+		Help:      "Number of errors that have occurred when checking the ring for ownership",
 	})
 )
 

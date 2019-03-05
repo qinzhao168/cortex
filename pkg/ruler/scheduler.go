@@ -52,11 +52,6 @@ var (
 		Help:      "Time spent requesting configs.",
 		Buckets:   prometheus.DefBuckets,
 	}, []string{"operation", "status_code"}))
-	ringCheckErrors = prometheus.NewCounter(prometheus.CounterOpts{
-		Namespace: "cortex",
-		Name:      "scheduler_ring_check_errors_total",
-		Help:      "Number of errors that have occurend when checking the ring for ownership",
-	})
 )
 
 func init() {

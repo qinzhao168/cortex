@@ -57,6 +57,11 @@ var (
 		Help:      "How far behind the target time each rule group executed.",
 		Buckets:   []float64{.1, .25, .5, 1, 2.5, 5, 10, 25},
 	})
+	ringCheckErrors = prometheus.NewCounter(prometheus.CounterOpts{
+		Namespace: "cortex",
+		Name:      "ruler_ring_check_errors_total",
+		Help:      "Number of errors that have occured when checking the ring for ownership",
+	})
 )
 
 func init() {

@@ -62,6 +62,7 @@ var (
 		Name:      "ruler_ring_check_errors_total",
 		Help:      "Number of errors that have occurred when checking the ring for ownership",
 	})
+	ruleMetrics *rules.Metrics
 )
 
 func init() {
@@ -70,6 +71,7 @@ func init() {
 	prometheus.MustRegister(rulesProcessed)
 	prometheus.MustRegister(blockedWorkers)
 	prometheus.MustRegister(workerIdleTime)
+	ruleMetrics = rules.NewGroupMetrics(prometheus.DefaultRegisterer)
 }
 
 // Config is the configuration for the recording rules server.
@@ -131,7 +133,6 @@ type Ruler struct {
 	notifierCfg      *config.Config
 	queueCapacity    int
 	groupTimeout     time.Duration
-	metrics          *rules.Metrics
 	SearchPendingFor time.Duration
 
 	scheduler *scheduler
@@ -162,7 +163,6 @@ func NewRuler(cfg Config, engine *promql.Engine, queryable storage.Queryable, d 
 		queueCapacity: cfg.NotificationQueueCapacity,
 		notifiers:     map[string]*rulerNotifier{},
 		groupTimeout:  cfg.GroupTimeout,
-		metrics:       rules.NewGroupMetrics(prometheus.DefaultRegisterer),
 	}
 
 	ruler.scheduler = newScheduler(rulesAPI, cfg.EvaluationInterval, cfg.EvaluationInterval, ruler.newGroup)
@@ -192,7 +192,6 @@ func NewRuler(cfg Config, engine *promql.Engine, queryable storage.Queryable, d 
 
 	ruler.workers = workers
 	go ruler.run()
-	go ruler.scheduler.Run()
 
 	return ruler, nil
 }
@@ -208,18 +207,19 @@ func (r *Ruler) run() {
 
 // Stop stops the Ruler.
 func (r *Ruler) Stop() {
-	r.lifecycler.Shutdown()
-
 	r.notifiersMtx.Lock()
 	for _, n := range r.notifiers {
 		n.stop()
 	}
 	r.notifiersMtx.Unlock()
 
+	r.scheduler.Stop()
 	for _, w := range r.workers {
 		w.Stop()
 	}
-	r.scheduler.Stop()
+
+	r.lifecycler.Shutdown()
+	r.ring.Stop()
 }
 
 func (r *Ruler) newGroup(userID string, groupName string, rls []rules.Rule) (*group, error) {
@@ -235,7 +235,7 @@ func (r *Ruler) newGroup(userID string, groupName string, rls []rules.Rule) (*gr
 		ExternalURL: r.alertURL,
 		NotifyFunc:  sendAlerts(notifier, r.alertURL.String()),
 		Logger:      util.Logger,
-		Metrics:     r.metrics,
+		Metrics:     ruleMetrics,
 	}
 	return newGroup(groupName, rls, appendable, opts), nil
 }

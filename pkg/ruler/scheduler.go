@@ -142,6 +142,7 @@ func (s *scheduler) Run() {
 			}
 		case <-s.stop:
 			ticker.Stop()
+			level.Debug(util.Logger).Log("msg", "scheduler stopped")
 			return
 		}
 	}

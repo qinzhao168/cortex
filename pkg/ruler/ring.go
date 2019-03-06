@@ -16,5 +16,6 @@ func CreateRulerRingConfig(cfg ring.Config) ring.Config {
 		Store:             cfg.Store,
 		HeartbeatTimeout:  cfg.HeartbeatTimeout,
 		ReplicationFactor: 1, // Ruler will never use a RF > 1
+		Mock:              cfg.Mock,
 	}
 }

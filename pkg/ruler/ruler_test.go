@@ -1,7 +1,6 @@
 package ruler
 
 import (
-	"flag"
 	"net/http"
 	"net/http/httptest"
 	"sync"
@@ -13,6 +12,8 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/configs"
 	"github.com/cortexproject/cortex/pkg/querier"
+	"github.com/cortexproject/cortex/pkg/ring"
+	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/prometheus/prometheus/notifier"
 	"github.com/stretchr/testify/assert"
 	"github.com/weaveworks/common/user"
@@ -24,14 +25,21 @@ func (m *mockRuleStore) GetConfigs(since configs.ID) (map[string]configs.Version
 	return map[string]configs.VersionedRulesConfig{}, nil
 }
 
-func newTestRuler(t *testing.T, alertmanagerURL string) *Ruler {
-	var cfg Config
-	fs := flag.NewFlagSet("test", flag.PanicOnError)
-	cfg.RegisterFlags(fs)
-	fs.Parse(nil)
-	cfg.AlertmanagerURL.Set(alertmanagerURL)
-	cfg.AlertmanagerDiscovery = false
+func defaultRulerConfig() Config {
+	consul := ring.NewInMemoryKVClient()
+	cfg := Config{}
+	flagext.DefaultValues(&cfg)
+	flagext.DefaultValues(&cfg.LifecyclerConfig)
+	cfg.LifecyclerConfig.RingConfig.Mock = consul
+	cfg.LifecyclerConfig.NumTokens = 1
+	cfg.LifecyclerConfig.ListenPort = func(i int) *int { return &i }(0)
+	cfg.LifecyclerConfig.Addr = "localhost"
+	cfg.LifecyclerConfig.ID = "localhost"
+	cfg.LifecyclerConfig.RingConfig = CreateRulerRingConfig(cfg.LifecyclerConfig.RingConfig)
+	return cfg
+}
 
+func newTestRuler(t *testing.T, cfg Config) *Ruler {
 	// TODO: Populate distributor and chunk store arguments to enable
 	// other kinds of tests.
 
@@ -59,7 +67,11 @@ func TestNotifierSendsUserIDHeader(t *testing.T) {
 	}))
 	defer ts.Close()
 
-	r := newTestRuler(t, ts.URL)
+	cfg := defaultRulerConfig()
+	cfg.AlertmanagerURL.Set(ts.URL)
+	cfg.AlertmanagerDiscovery = false
+
+	r := newTestRuler(t, cfg)
 	n, err := r.getOrCreateNotifier("1")
 	if err != nil {
 		t.Fatal(err)

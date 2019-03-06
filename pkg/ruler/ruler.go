@@ -117,7 +117,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	if flag.Lookup("promql.lookback-delta") == nil {
 		flag.DurationVar(&promql.LookbackDelta, "promql.lookback-delta", promql.LookbackDelta, "Time since the last sample after which a time series is considered stale and ignored by expression evaluations.")
 	}
-	f.DurationVar(&cfg.SearchPendingFor, "ruler.search-pending-for", 30*time.Second, "Time to spend searching for a pending ruler when shutting down.")
+	f.DurationVar(&cfg.SearchPendingFor, "ruler.search-pending-for", 5*time.Minute, "Time to spend searching for a pending ruler when shutting down.")
 	f.BoolVar(&cfg.EnableSharding, "ruler.enable-sharding", false, "Distribute rule evaluation using ring backend")
 }
 

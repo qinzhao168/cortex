@@ -27,6 +27,7 @@ func (r *Ruler) TransferOut(ctx context.Context) error {
 // findTargetRuler finds an ingester in PENDING state. Before terminating
 // the ruler must be sure there is a replacement ruler being created
 func (r *Ruler) findTargetRuler(ctx context.Context) (*ring.IngesterDesc, error) {
+	level.Debug(util.Logger).Log("msg", "looking for pending rulers")
 	findRuler := func() (*ring.IngesterDesc, error) {
 		ringDesc, err := r.lifecycler.KVStore.Get(ctx, ring.ConsulKey)
 		if err != nil {

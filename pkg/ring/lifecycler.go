@@ -19,15 +19,15 @@ import (
 
 var (
 	consulHeartbeats = promauto.NewCounter(prometheus.CounterOpts{
-		Name: "cortex_ingester_consul_heartbeats_total",
+		Name: "cortex_member_consul_heartbeats_total",
 		Help: "The total number of heartbeats sent to consul.",
 	})
 	tokensOwned = promauto.NewGauge(prometheus.GaugeOpts{
-		Name: "cortex_ingester_ring_tokens_owned",
+		Name: "cortex_member_ring_tokens_owned",
 		Help: "The number of tokens owned in the ring.",
 	})
 	tokensToOwn = promauto.NewGauge(prometheus.GaugeOpts{
-		Name: "cortex_ingester_ring_tokens_to_own",
+		Name: "cortex_member_ring_tokens_to_own",
 		Help: "The number of tokens to own in the ring.",
 	})
 	shutdownDuration = promauto.NewHistogramVec(prometheus.HistogramOpts{

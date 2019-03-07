@@ -12,6 +12,7 @@ func CreateRulerRingConfig(cfg ring.Config) ring.Config {
 	consulCfg.Prefix = "rulers/"
 
 	return ring.Config{
+		Name:              "ruler", // Ensures separate ring metrics for ruler ring
 		Consul:            consulCfg,
 		Store:             cfg.Store,
 		HeartbeatTimeout:  cfg.HeartbeatTimeout,

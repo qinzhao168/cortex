@@ -121,7 +121,6 @@ func newScheduler(ruleStore RuleStore, evaluationInterval, pollInterval time.Dur
 		cfgs:               map[string]userConfig{},
 		groupFn:            groupFn,
 
-		stop: make(chan struct{}),
 		done: make(chan struct{}),
 	}
 }
@@ -129,7 +128,7 @@ func newScheduler(ruleStore RuleStore, evaluationInterval, pollInterval time.Dur
 // Run polls the source of configurations for changes.
 func (s *scheduler) Run() {
 	level.Debug(util.Logger).Log("msg", "scheduler started")
-	defer close(s.done)
+
 	// Load initial set of all configurations before polling for new ones.
 	s.addNewConfigs(time.Now(), s.loadAllConfigs())
 	ticker := time.NewTicker(s.pollInterval)
@@ -140,18 +139,17 @@ func (s *scheduler) Run() {
 			if err != nil {
 				level.Warn(util.Logger).Log("msg", "scheduler: error updating configs", "err", err)
 			}
-		case <-s.stop:
+		case <-s.done:
 			ticker.Stop()
-			level.Debug(util.Logger).Log("msg", "scheduler stopped")
+			level.Debug(util.Logger).Log("msg", "scheduler config polling stopped")
 			return
 		}
 	}
 }
 
 func (s *scheduler) Stop() {
-	close(s.stop)
+	close(s.done)
 	s.q.Close()
-	<-s.done
 	level.Debug(util.Logger).Log("msg", "scheduler stopped")
 }
 
@@ -283,9 +281,15 @@ func (s *scheduler) addUserConfig(now time.Time, hasher hash.Hash64, generation 
 }
 
 func (s *scheduler) addWorkItem(i workItem) {
-	// The queue is keyed by userID+groupName, so items for existing userID+groupName will be replaced.
-	s.q.Enqueue(i)
-	level.Debug(util.Logger).Log("msg", "scheduler: work item added", "item", i)
+	select {
+	case <-s.done:
+		level.Debug(util.Logger).Log("msg", "scheduler: work item not added, scheduler stoped", "item", i)
+		return
+	default:
+		// The queue is keyed by userID+groupName, so items for existing userID+groupName will be replaced.
+		s.q.Enqueue(i)
+		level.Debug(util.Logger).Log("msg", "scheduler: work item added", "item", i)
+	}
 }
 
 // Get the next scheduled work item, blocking if none.

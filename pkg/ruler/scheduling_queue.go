@@ -124,7 +124,7 @@ func (sq *SchedulingQueue) run() {
 		if q.Len() == 0 {
 			next, open := <-sq.add
 
-			// Iff sq.add is closed (and there is nothing on the queue),
+			// If sq.add is closed (and there is nothing on the queue),
 			// we can close sq.next and stop this goroutine
 			if !open {
 				close(sq.next)

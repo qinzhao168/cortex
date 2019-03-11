@@ -102,6 +102,7 @@ type Config struct {
 
 	SearchPendingFor time.Duration
 	LifecyclerConfig ring.LifecyclerConfig
+	FlushCheckPeriod time.Duration
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet
@@ -121,6 +122,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	}
 	f.DurationVar(&cfg.SearchPendingFor, "ruler.search-pending-for", 5*time.Minute, "Time to spend searching for a pending ruler when shutting down.")
 	f.BoolVar(&cfg.EnableSharding, "ruler.enable-sharding", false, "Distribute rule evaluation using ring backend")
+	f.DurationVar(&cfg.FlushCheckPeriod, "ingester.flush-period", 1*time.Minute, "Period with which to attempt to flush rule groups.")
 }
 
 // Ruler evaluates rules.

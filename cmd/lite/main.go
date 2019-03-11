@@ -97,7 +97,6 @@ func main() {
 		ruleStore, err := ruler.NewRuleStore(ruleStoreConfig)
 		util.CheckFatal("initializing ruler api", err)
 
-
 		rlr, err := ruler.NewRuler(rulerConfig, engine, queryable, dist, ruleStore)
 		util.CheckFatal("initializing ruler", err)
 
@@ -113,7 +112,7 @@ func main() {
 		map[string]string{}, // TODO: include configuration flags
 		func(f http.HandlerFunc) http.HandlerFunc { return f },
 		func() v1.TSDBAdmin { return nil }, // Only needed for admin APIs.
-		false, // Disable admin APIs.
+		false,                              // Disable admin APIs.
 		util.Logger,
 		querier.DummyRulesRetriever{},
 		0, 0, // Remote read samples and concurrency limit.
@@ -135,18 +134,10 @@ func main() {
 	// Only serve the API for setting & getting rules configs if we're not
 	// serving configs from the configs API. Allows for smoother
 	// migration. See https://github.com/cortexproject/cortex/issues/619
-<<<<<<< HEAD
-	if configStoreConfig.ConfigsAPIURL.URL == nil {
-		a, err := ruler.NewAPIFromConfig(configStoreConfig.DBConfig)
-		util.CheckFatal("initializing public rules API", err)
-=======
 	if ruleStoreConfig.ConfigsAPIURL.URL == nil {
 		a, err := ruler.NewAPIFromConfig(ruleStoreConfig.DBConfig)
-		if err != nil {
-			level.Error(util.Logger).Log("msg", "error initializing public rules API", "err", err)
-			os.Exit(1)
-		}
->>>>>>> 7fb9a72e... add sharding to ruler
+		util.CheckFatal("initializing public rules API", err)
+
 		a.RegisterRoutes(server.HTTP)
 	}
 

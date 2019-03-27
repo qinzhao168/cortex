@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/go-kit/kit/log/level"
+	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/common/model"
@@ -271,6 +272,10 @@ func (c *store) LabelValuesForMetricName(ctx context.Context, from, through mode
 	sort.Strings(result)
 	result = uniqueStrings(result)
 	return result, nil
+}
+
+func (c *store) GetChunkRefs(ctx context.Context, from, through model.Time, allMatchers ...*labels.Matcher) ([][]Chunk, []*Fetcher, error) {
+	return nil, nil, errors.New("not implemented")
 }
 
 func (c *store) validateQueryTimeRange(ctx context.Context, from model.Time, through *model.Time) (bool, error) {

@@ -119,7 +119,9 @@ func TestSplitQuery(t *testing.T) {
 		},
 	} {
 		t.Run(strconv.Itoa(i), func(t *testing.T) {
-			require.Equal(t, tc.expected, splitQuery(tc.input))
+			days, err := splitQuery(tc.input)
+			require.NoError(t, err)
+			require.Equal(t, tc.expected, days)
 		})
 	}
 }

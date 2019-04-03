@@ -2,11 +2,17 @@ package frontend
 
 import (
 	"context"
+	"net/http"
 	"time"
+
+	"github.com/weaveworks/common/httpgrpc"
 )
 
 const millisecondPerDay = int64(24 * time.Hour / time.Millisecond)
 const maxParallelism = 14
+
+var maxDaySplits = 500
+var errTooManyDays = httpgrpc.Errorf(http.StatusBadRequest, "query too long")
 
 var splitByDayMiddleware = queryRangeMiddlewareFunc(func(next queryRangeHandler) queryRangeHandler {
 	return instrument("split_by_day").Wrap(splitByDay{
@@ -27,7 +33,10 @@ type response struct {
 func (s splitByDay) Do(ctx context.Context, r *QueryRangeRequest) (*APIResponse, error) {
 	// First we're going to build new requests, one for each day, taking care
 	// to line up the boundaries with step.
-	reqs := splitQuery(r)
+	reqs, err := splitQuery(r)
+	if err != nil {
+		return nil, err
+	}
 
 	reqResps, err := doRequests(ctx, s.next, reqs)
 	if err != nil {
@@ -42,7 +51,7 @@ func (s splitByDay) Do(ctx context.Context, r *QueryRangeRequest) (*APIResponse,
 	return mergeAPIResponses(resps)
 }
 
-func splitQuery(r *QueryRangeRequest) []*QueryRangeRequest {
+func splitQuery(r *QueryRangeRequest) ([]*QueryRangeRequest, error) {
 	reqs := []*QueryRangeRequest{}
 	for start := r.Start; start < r.End; start = nextDayBoundary(start, r.Step) + r.Step {
 		end := nextDayBoundary(start, r.Step)
@@ -57,8 +66,12 @@ func splitQuery(r *QueryRangeRequest) []*QueryRangeRequest {
 			Step:  r.Step,
 			Query: r.Query,
 		})
+
+		if len(reqs) > maxDaySplits {
+			return nil, errTooManyDays
+		}
 	}
-	return reqs
+	return reqs, nil
 }
 
 // Round up to the step before the next day boundary.

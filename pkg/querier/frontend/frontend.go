@@ -66,6 +66,9 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.BoolVar(&cfg.AlignQueriesWithStep, "querier.align-querier-with-step", false, "Mutate incoming queries to align their start and end with their step.")
 	f.BoolVar(&cfg.CacheResults, "querier.cache-results", false, "Cache query results.")
 	f.BoolVar(&cfg.CompressResponses, "querier.compress-http-responses", false, "Compress HTTP responses.")
+
+	f.IntVar(&maxDaySplits, "querier.max-day-splits", 500, "Maximum number of day splits.")
+
 	cfg.resultsCacheConfig.RegisterFlags(f)
 }
 

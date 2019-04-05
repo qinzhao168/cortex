@@ -179,6 +179,11 @@ func (m *MockStorage) BatchWrite(ctx context.Context, batch WriteBatch) error {
 	return nil
 }
 
+// DeletePages is not currently implemented
+func (m *MockStorage) DeletePages(ctx context.Context, query DeleteQuery) error {
+	return ErrDeleteNotImplemented
+}
+
 // QueryPages implements StorageClient.
 func (m *MockStorage) QueryPages(ctx context.Context, queries []IndexQuery, callback func(IndexQuery, ReadBatch) (shouldContinue bool)) error {
 	m.mtx.RLock()

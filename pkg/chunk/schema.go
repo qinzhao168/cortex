@@ -64,6 +64,14 @@ type IndexQuery struct {
 	Immutable bool
 }
 
+// DeleteQuery describes a set of series for deletion
+type DeleteQuery struct {
+	TableName string
+	HashValue string
+	UserID    string
+	BatchSize int64
+}
+
 // IndexEntry describes an entry in the chunk index
 type IndexEntry struct {
 	TableName string

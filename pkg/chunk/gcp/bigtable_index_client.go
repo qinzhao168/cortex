@@ -270,6 +270,61 @@ func (s *storageClientColumnKey) QueryPages(ctx context.Context, queries []chunk
 	return lastErr
 }
 
+func (s *storageClientColumnKey) DeletePages(ctx context.Context, query chunk.DeleteQuery) error {
+	sp, ctx := ot.StartSpanFromContext(ctx, "DeletePages")
+	defer sp.Finish()
+
+	var prefix string
+	if query.HashValue != "" {
+		prefix, _ = s.keysFn(query.HashValue, []byte{})
+	} else if query.UserID != "" {
+		if s.cfg.DistributeKeys {
+			return chunk.ErrDeleteNotImplemented
+		}
+		prefix = query.UserID + ":"
+	} else {
+		return errors.New("either a hash value or user id is required for a delete query")
+	}
+
+	table := s.client.Open(query.TableName)
+
+	for {
+		rowKeys := make([]string, 0, query.BatchSize)
+		muts := make([]*bigtable.Mutation, 0, query.BatchSize)
+		err := table.ReadRows(ctx,
+			bigtable.PrefixRange(prefix),
+			func(row bigtable.Row) bool {
+				rowKeys = append(rowKeys, row.Key())
+				mut := bigtable.NewMutation()
+				mut.DeleteRow()
+				muts = append(muts, mut)
+				return true
+			},
+			bigtable.LimitRows(query.BatchSize),
+		)
+		if err != nil {
+			sp.LogFields(otlog.String("error", err.Error()))
+			return errors.WithStack(err)
+		}
+
+		if len(rowKeys) == 0 {
+			break
+		}
+
+		errs, err := table.ApplyBulk(ctx, rowKeys, muts)
+		if err != nil {
+			return err
+		}
+		for _, err := range errs {
+			if err != nil {
+				return err
+			}
+		}
+	}
+
+	return nil
+}
+
 // columnKeyBatch represents a batch of values read from Bigtable.
 type columnKeyBatch struct {
 	items []bigtable.ReadItem

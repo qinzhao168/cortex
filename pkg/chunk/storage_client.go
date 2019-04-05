@@ -12,6 +12,9 @@ type IndexClient interface {
 
 	// For the read path.
 	QueryPages(ctx context.Context, queries []IndexQuery, callback func(IndexQuery, ReadBatch) (shouldContinue bool)) error
+
+	// For the delete path
+	DeletePages(ctx context.Context, query DeleteQuery) error
 }
 
 // ObjectClient is for storing and retrieving chunks.

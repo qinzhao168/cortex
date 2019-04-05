@@ -285,6 +285,11 @@ func (a dynamoDBStorageClient) QueryPages(ctx context.Context, queries []chunk.I
 	return chunk_util.DoParallelQueries(ctx, a.query, queries, callback)
 }
 
+// DeletePages is not currently implemented
+func (a dynamoDBStorageClient) DeletePages(ctx context.Context, query chunk.DeleteQuery) error {
+	return chunk.ErrDeleteNotImplemented
+}
+
 func (a dynamoDBStorageClient) query(ctx context.Context, query chunk.IndexQuery, callback func(result chunk.ReadBatch) (shouldContinue bool)) error {
 	input := &dynamodb.QueryInput{
 		TableName: aws.String(query.TableName),

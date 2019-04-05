@@ -3,8 +3,12 @@ package chunk
 import (
 	"time"
 
+	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
 )
+
+// ErrDeleteNotImplemented communicates a client does not support deletes
+var ErrDeleteNotImplemented = errors.New("DeletePages is not currently implemented")
 
 // BenchmarkMetric is a real example from Kubernetes' embedded cAdvisor metrics, lightly obfuscated
 var BenchmarkMetric = model.Metric{

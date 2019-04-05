@@ -226,3 +226,8 @@ func ensureDirectory(dir string) error {
 	}
 	return err
 }
+
+// DeletePages is not currently implemented
+func (b *boltIndexClient) DeletePages(ctx context.Context, query chunk.DeleteQuery) error {
+	return chunk.ErrDeleteNotImplemented
+}

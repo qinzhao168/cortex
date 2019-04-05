@@ -179,6 +179,11 @@ func (s *StorageClient) BatchWrite(ctx context.Context, batch chunk.WriteBatch) 
 	return nil
 }
 
+// DeletePages is not currently implemented for Cassandra
+func (s *StorageClient) DeletePages(ctx context.Context, query chunk.DeleteQuery) error {
+	return chunk.ErrDeleteNotImplemented
+}
+
 // QueryPages implement chunk.IndexClient.
 func (s *StorageClient) QueryPages(ctx context.Context, queries []chunk.IndexQuery, callback func(chunk.IndexQuery, chunk.ReadBatch) bool) error {
 	return util.DoParallelQueries(ctx, s.query, queries, callback)

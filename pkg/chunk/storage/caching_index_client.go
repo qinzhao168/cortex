@@ -66,6 +66,11 @@ func (s *cachingIndexClient) Stop() {
 	s.cache.Stop()
 }
 
+// DeletePages is not currently implemented
+func (s *cachingIndexClient) DeletePages(ctx context.Context, query chunk.DeleteQuery) error {
+	return chunk.ErrDeleteNotImplemented
+}
+
 func (s *cachingIndexClient) QueryPages(ctx context.Context, queries []chunk.IndexQuery, callback func(chunk.IndexQuery, chunk.ReadBatch) (shouldContinue bool)) error {
 	// We cache the entire row, so filter client side.
 	callback = chunk_util.QueryFilter(callback)

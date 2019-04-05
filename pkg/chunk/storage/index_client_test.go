@@ -1,6 +1,7 @@
 package storage
 
 import (
+	"context"
 	"fmt"
 	"strconv"
 	"testing"
@@ -225,5 +226,175 @@ func TestCardinalityLimit(t *testing.T) {
 		})
 		require.Error(t, err, "cardinality limit exceeded for {}; 10 entries, more than limit of 5")
 		require.Equal(t, 0, have)
+	})
+}
+
+var deleteEntries = []chunk.IndexEntry{
+	{
+		TableName:  tableName,
+		HashValue:  "1:test1",
+		RangeValue: []byte("bar:1"),
+		Value:      []byte("10"),
+	},
+	{
+		TableName:  tableName,
+		HashValue:  "1:test2",
+		RangeValue: []byte("bar:3"),
+		Value:      []byte("30"),
+	},
+	{
+		TableName:  tableName,
+		HashValue:  "1:test3",
+		RangeValue: []byte("baz:1"),
+		Value:      []byte("10"),
+	},
+	{
+		TableName:  tableName,
+		HashValue:  "2:test1",
+		RangeValue: []byte("bar:1"),
+		Value:      []byte("abc"),
+	},
+}
+
+func TestDeletePages(t *testing.T) {
+	forAllFixtures(t, func(t *testing.T, client chunk.IndexClient, _ chunk.ObjectClient) {
+		err := client.DeletePages(context.Background(), chunk.DeleteQuery{UserID: "placeholder"})
+		if err == chunk.ErrDeleteNotImplemented {
+			return
+		}
+
+		batch := client.NewWriteBatch()
+		for _, entry := range deleteEntries {
+			batch.Add(entry.TableName, entry.HashValue, entry.RangeValue, entry.Value)
+		}
+
+		err = client.BatchWrite(context.Background(), batch)
+		require.NoError(t, err)
+
+		type testQuery struct {
+			query chunk.IndexQuery
+			want  []chunk.IndexEntry
+		}
+		tests := []struct {
+			name            string
+			query           chunk.DeleteQuery
+			preTestQueries  []testQuery
+			postTestQueries []testQuery
+		}{
+			{
+				"delete with only hash value",
+				chunk.DeleteQuery{
+					TableName: tableName,
+					HashValue: "1:test1",
+				},
+				[]testQuery{
+					{
+						chunk.IndexQuery{
+							TableName: tableName,
+							HashValue: "1:test1",
+						},
+						[]chunk.IndexEntry{deleteEntries[0]},
+					},
+				},
+				[]testQuery{
+					{
+						chunk.IndexQuery{
+							TableName: tableName,
+							HashValue: "1:test1",
+						},
+						nil,
+					},
+				},
+			},
+			{
+				"delete with userID",
+				chunk.DeleteQuery{
+					TableName: tableName,
+					UserID:    "1",
+				},
+				[]testQuery{
+					{
+						chunk.IndexQuery{
+							TableName: tableName,
+							HashValue: "1:test2",
+						},
+						[]chunk.IndexEntry{deleteEntries[1]},
+					},
+					{
+						chunk.IndexQuery{
+							TableName: tableName,
+							HashValue: "1:test3",
+						},
+						[]chunk.IndexEntry{deleteEntries[2]},
+					},
+				},
+				[]testQuery{
+					{
+						chunk.IndexQuery{
+							TableName: tableName,
+							HashValue: "1:test2",
+						},
+						nil,
+					},
+					{
+						chunk.IndexQuery{
+							TableName: tableName,
+							HashValue: "1:test3",
+						},
+						nil,
+					},
+					{
+						chunk.IndexQuery{
+							TableName: tableName,
+							HashValue: "2:test1",
+						},
+						[]chunk.IndexEntry{deleteEntries[3]},
+					},
+				},
+			},
+		}
+
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				for _, tq := range tt.preTestQueries {
+					var have []chunk.IndexEntry
+					err = client.QueryPages(context.Background(), []chunk.IndexQuery{tq.query}, func(_ chunk.IndexQuery, read chunk.ReadBatch) bool {
+						iter := read.Iterator()
+						for iter.Next() {
+							have = append(have, chunk.IndexEntry{
+								TableName:  tq.query.TableName,
+								HashValue:  tq.query.HashValue,
+								RangeValue: iter.RangeValue(),
+								Value:      iter.Value(),
+							})
+						}
+						return true
+					})
+					require.NoError(t, err)
+					require.Equal(t, tq.want, have, "Pre deletion value not as expected")
+				}
+
+				err = client.DeletePages(context.Background(), tt.query)
+				require.NoError(t, err)
+
+				for _, tq := range tt.postTestQueries {
+					var have []chunk.IndexEntry
+					err = client.QueryPages(context.Background(), []chunk.IndexQuery{tq.query}, func(_ chunk.IndexQuery, read chunk.ReadBatch) bool {
+						iter := read.Iterator()
+						for iter.Next() {
+							have = append(have, chunk.IndexEntry{
+								TableName:  tq.query.TableName,
+								HashValue:  tq.query.HashValue,
+								RangeValue: iter.RangeValue(),
+								Value:      iter.Value(),
+							})
+						}
+						return true
+					})
+					require.NoError(t, err)
+					require.Equal(t, tq.want, have, "Post deletion value not as expected")
+				}
+			})
+		}
 	})
 }

@@ -18,23 +18,23 @@ import (
 )
 
 var (
-	consulHeartbeats = promauto.NewCounter(prometheus.CounterOpts{
+	consulHeartbeats = promauto.NewCounterVec(prometheus.CounterOpts{
 		Name: "cortex_member_consul_heartbeats_total",
 		Help: "The total number of heartbeats sent to consul.",
-	})
-	tokensOwned = promauto.NewGauge(prometheus.GaugeOpts{
+	}, []string{"name"})
+	tokensOwned = promauto.NewGaugeVec(prometheus.GaugeOpts{
 		Name: "cortex_member_ring_tokens_owned",
 		Help: "The number of tokens owned in the ring.",
-	})
-	tokensToOwn = promauto.NewGauge(prometheus.GaugeOpts{
+	}, []string{"name"})
+	tokensToOwn = promauto.NewGaugeVec(prometheus.GaugeOpts{
 		Name: "cortex_member_ring_tokens_to_own",
 		Help: "The number of tokens to own in the ring.",
-	})
+	}, []string{"op", "status", "name"})
 	shutdownDuration = promauto.NewHistogramVec(prometheus.HistogramOpts{
 		Name:    "cortex_shutdown_duration_seconds",
 		Help:    "Duration (in seconds) of cortex shutdown procedure (ie transfer or flush).",
 		Buckets: prometheus.ExponentialBuckets(10, 2, 8), // Biggest bucket is 10*2^(9-1) = 2560, or 42 mins.
-	}, []string{"op", "status"})
+	}, []string{"op", "status", "name"})
 )
 
 // LifecyclerConfig is the config to build a Lifecycler.
@@ -61,11 +61,16 @@ type LifecyclerConfig struct {
 
 // RegisterFlags adds the flags required to config this to the given FlagSet
 func (cfg *LifecyclerConfig) RegisterFlags(f *flag.FlagSet) {
-	cfg.RingConfig.RegisterFlags(f)
+	cfg.RegisterFlagsWithPrefix("", f)
+}
+
+// RegisterFlagsWithPrefix adds the flags required to config this to the given FlagSet
+func (cfg *LifecyclerConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
+	cfg.RingConfig.RegisterFlagsWithPrefix(prefix, f)
 
 	f.IntVar(&cfg.NumTokens, "ingester.num-tokens", 128, "Number of tokens for each ingester.")
 	f.DurationVar(&cfg.HeartbeatPeriod, "ingester.heartbeat-period", 5*time.Second, "Period at which to heartbeat to consul.")
-	f.DurationVar(&cfg.JoinAfter, "ingester.join-after", 0*time.Second, "Period to wait for a claim from another ingester; will join automatically after this.")
+	f.DurationVar(&cfg.JoinAfter, "ingester.join-after", 0*time.Second, "Period to wait for a claim from another member; will join automatically after this.")
 	f.DurationVar(&cfg.MinReadyDuration, "ingester.min-ready-duration", 1*time.Minute, "Minimum duration to wait before becoming ready. This is to work around race conditions with ingesters exiting and updating the ring.")
 	f.BoolVar(&cfg.ClaimOnRollout, "ingester.claim-on-rollout", false, "Send chunks to PENDING ingesters on exit.")
 	f.BoolVar(&cfg.NormaliseTokens, "ingester.normalise-tokens", false, "Store tokens in a normalised fashion to reduce allocations.")
@@ -78,10 +83,10 @@ func (cfg *LifecyclerConfig) RegisterFlags(f *flag.FlagSet) {
 	}
 
 	cfg.InfNames = []string{"eth0", "en0"}
-	f.Var((*flagext.Strings)(&cfg.InfNames), "ingester.interface", "Name of network interface to read address from.")
-	f.StringVar(&cfg.Addr, "ingester.addr", "", "IP address to advertise in consul.")
-	f.IntVar(&cfg.Port, "ingester.port", 0, "port to advertise in consul (defaults to server.grpc-listen-port).")
-	f.StringVar(&cfg.ID, "ingester.ID", hostname, "ID to register into consul.")
+	f.Var((*flagext.Strings)(&cfg.InfNames), prefix+"lifecycler.interface", "Name of network interface to read address from.")
+	f.StringVar(&cfg.Addr, prefix+"lifecycler.addr", "", "IP address to advertise in consul.")
+	f.IntVar(&cfg.Port, prefix+"lifecycler.port", 0, "port to advertise in consul (defaults to server.grpc-listen-port).")
+	f.StringVar(&cfg.ID, prefix+"lifecycler.ID", hostname, "ID to register into consul.")
 }
 
 // FlushTransferer controls the shutdown of an ingester.
@@ -103,8 +108,9 @@ type Lifecycler struct {
 	actorChan chan func()
 
 	// These values are initialised at startup, and never change
-	ID   string
-	Addr string
+	ID       string
+	Addr     string
+	RingName string
 
 	// We need to remember the ingester state just in case consul goes away and comes
 	// back empty.  And it changes during lifecycle of ingester.
@@ -119,7 +125,7 @@ type Lifecycler struct {
 }
 
 // NewLifecycler makes and starts a new Lifecycler.
-func NewLifecycler(cfg LifecyclerConfig, flushTransferer FlushTransferer) (*Lifecycler, error) {
+func NewLifecycler(cfg LifecyclerConfig, flushTransferer FlushTransferer, name string) (*Lifecycler, error) {
 	addr := cfg.Addr
 	if addr == "" {
 		var err error
@@ -153,7 +159,7 @@ func NewLifecycler(cfg LifecyclerConfig, flushTransferer FlushTransferer) (*Life
 		startTime: time.Now(),
 	}
 
-	tokensToOwn.Set(float64(cfg.NumTokens))
+	tokensToOwn.WithLabelValues(l.RingName).Set(float64(cfg.NumTokens))
 
 	l.done.Add(1)
 	go l.loop()
@@ -223,7 +229,7 @@ func (i *Lifecycler) getTokens() []uint32 {
 }
 
 func (i *Lifecycler) setTokens(tokens []uint32) {
-	tokensOwned.Set(float64(len(tokens)))
+	tokensOwned.WithLabelValues(i.RingName).Set(float64(len(tokens)))
 
 	i.stateMtx.Lock()
 	defer i.stateMtx.Unlock()
@@ -275,7 +281,7 @@ func (i *Lifecycler) Shutdown() {
 
 func (i *Lifecycler) loop() {
 	defer func() {
-		level.Info(util.Logger).Log("msg", "Ingester.loop() exited gracefully")
+		level.Info(util.Logger).Log("msg", "member.loop() exited gracefully")
 		i.done.Done()
 	}()
 
@@ -308,7 +314,7 @@ loop:
 			}
 
 		case <-heartbeatTicker.C:
-			consulHeartbeats.Inc()
+			consulHeartbeats.WithLabelValues(i.RingName).Inc()
 			if err := i.updateConsul(context.Background()); err != nil {
 				level.Error(util.Logger).Log("msg", "failed to write to consul, sleeping", "err", err)
 			}
@@ -336,7 +342,7 @@ heartbeatLoop:
 	for {
 		select {
 		case <-heartbeatTicker.C:
-			consulHeartbeats.Inc()
+			consulHeartbeats.WithLabelValues(i.RingName).Inc()
 			if err := i.updateConsul(context.Background()); err != nil {
 				level.Error(util.Logger).Log("msg", "failed to write to consul, sleeping", "err", err)
 			}

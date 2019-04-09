@@ -60,7 +60,7 @@ func main() {
 
 	util.InitLogger(&serverConfig)
 
-	r, err := ring.New(ringConfig)
+	r, err := ring.New(ringConfig, "ingester")
 	util.CheckFatal("initializing ring", err)
 	prometheus.MustRegister(r)
 	defer r.Stop()

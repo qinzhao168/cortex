@@ -107,6 +107,8 @@ type Config struct {
 
 // RegisterFlags adds the flags required to config this to the given FlagSet
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
+	cfg.LifecyclerConfig.RegisterFlagsWithPrefix("ruler.", f)
+
 	cfg.ExternalURL.URL, _ = url.Parse("") // Must be non-nil
 	f.Var(&cfg.ExternalURL, "ruler.external.url", "URL of alerts return path.")
 	f.DurationVar(&cfg.EvaluationInterval, "ruler.evaluation-interval", 15*time.Second, "How frequently to evaluate rules")
@@ -122,20 +124,17 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	}
 	f.DurationVar(&cfg.SearchPendingFor, "ruler.search-pending-for", 5*time.Minute, "Time to spend searching for a pending ruler when shutting down.")
 	f.BoolVar(&cfg.EnableSharding, "ruler.enable-sharding", false, "Distribute rule evaluation using ring backend")
-	f.DurationVar(&cfg.FlushCheckPeriod, "ingester.flush-period", 1*time.Minute, "Period with which to attempt to flush rule groups.")
+	f.DurationVar(&cfg.FlushCheckPeriod, "ruler.flush-period", 1*time.Minute, "Period with which to attempt to flush rule groups.")
 }
 
 // Ruler evaluates rules.
 type Ruler struct {
-	cfg              Config
-	engine           *promql.Engine
-	queryable        storage.Queryable
-	pusher           Pusher
-	alertURL         *url.URL
-	notifierCfg      *config.Config
-	queueCapacity    int
-	groupTimeout     time.Duration
-	SearchPendingFor time.Duration
+	cfg         Config
+	engine      *promql.Engine
+	queryable   storage.Queryable
+	pusher      Pusher
+	alertURL    *url.URL
+	notifierCfg *config.Config
 
 	scheduler *scheduler
 	workers   []worker
@@ -156,15 +155,13 @@ func NewRuler(cfg Config, engine *promql.Engine, queryable storage.Queryable, d 
 	}
 
 	ruler := &Ruler{
-		cfg:           cfg,
-		engine:        engine,
-		queryable:     queryable,
-		pusher:        d,
-		alertURL:      cfg.ExternalURL.URL,
-		notifierCfg:   ncfg,
-		queueCapacity: cfg.NotificationQueueCapacity,
-		notifiers:     map[string]*rulerNotifier{},
-		groupTimeout:  cfg.GroupTimeout,
+		cfg:         cfg,
+		engine:      engine,
+		queryable:   queryable,
+		pusher:      d,
+		alertURL:    cfg.ExternalURL.URL,
+		notifierCfg: ncfg,
+		notifiers:   map[string]*rulerNotifier{},
 	}
 
 	ruler.scheduler = newScheduler(rulesAPI, cfg.EvaluationInterval, cfg.EvaluationInterval, ruler.newGroup)
@@ -172,12 +169,12 @@ func NewRuler(cfg Config, engine *promql.Engine, queryable storage.Queryable, d 
 	// If sharding is enabled, create/join a ring to distribute tokens to
 	// the ruler
 	if cfg.EnableSharding {
-		ruler.lifecycler, err = ring.NewLifecycler(cfg.LifecyclerConfig, ruler)
+		ruler.lifecycler, err = ring.NewLifecycler(cfg.LifecyclerConfig, ruler, "ruler")
 		if err != nil {
 			return nil, err
 		}
 
-		ruler.ring, err = ring.New(cfg.LifecyclerConfig.RingConfig)
+		ruler.ring, err = ring.New(cfg.LifecyclerConfig.RingConfig, "ruler")
 		if err != nil {
 			return nil, err
 		}
@@ -283,7 +280,7 @@ func (r *Ruler) getOrCreateNotifier(userID string) (*notifier.Manager, error) {
 	}
 
 	n = newRulerNotifier(&notifier.Options{
-		QueueCapacity: r.queueCapacity,
+		QueueCapacity: r.cfg.NotificationQueueCapacity,
 		Do: func(ctx context.Context, client *http.Client, req *http.Request) (*http.Response, error) {
 			// Note: The passed-in context comes from the Prometheus rule group code
 			// and does *not* contain the userID. So it needs to be added to the context
@@ -320,7 +317,7 @@ func (r *Ruler) Evaluate(userID string, item *workItem) {
 		}
 	}
 	level.Debug(logger).Log("msg", "evaluating rules...", "num_rules", len(item.group.Rules()))
-	ctx, cancelTimeout := context.WithTimeout(ctx, r.groupTimeout)
+	ctx, cancelTimeout := context.WithTimeout(ctx, r.cfg.GroupTimeout)
 	instrument.CollectedRequest(ctx, "Evaluate", evalDuration, nil, func(ctx native_ctx.Context) error {
 		if span := opentracing.SpanFromContext(ctx); span != nil {
 			span.SetTag("instance", userID)

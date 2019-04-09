@@ -42,13 +42,13 @@ func (r *Ruler) findTargetRuler(ctx context.Context) (*ring.IngesterDesc, error)
 		return &rulers[0], nil
 	}
 
-	deadline := time.Now().Add(r.SearchPendingFor)
+	deadline := time.Now().Add(r.cfg.SearchPendingFor)
 	for {
 		ingester, err := findRuler()
 		if err != nil {
 			level.Debug(util.Logger).Log("msg", "Error looking for active rulers", "err", err)
 			if time.Now().Before(deadline) {
-				time.Sleep(r.SearchPendingFor / pendingSearchIterations)
+				time.Sleep(r.cfg.SearchPendingFor / pendingSearchIterations)
 				continue
 			} else {
 				level.Warn(util.Logger).Log("msg", "Could not find pending ruler before deadline", "err", err)

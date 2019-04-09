@@ -42,6 +42,9 @@ func main() {
 		querierConfig    querier.Config
 	)
 
+	// Ruler Lifecycler needs to know our gRPC listen port.
+	rulerConfig.LifecyclerConfig.ListenPort = &serverConfig.GRPCListenPort
+
 	// Setting the environment variable JAEGER_AGENT_HOST enables tracing
 	trace := tracing.NewFromEnv("ruler")
 	defer trace.Close()

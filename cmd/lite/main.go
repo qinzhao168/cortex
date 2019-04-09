@@ -68,7 +68,7 @@ func main() {
 	util.CheckFatal("", err)
 	defer chunkStore.Stop()
 
-	r, err := ring.New(ingesterConfig.LifecyclerConfig.RingConfig)
+	r, err := ring.New(ingesterConfig.LifecyclerConfig.RingConfig, "ingester")
 	util.CheckFatal("initializing ring", err)
 	prometheus.MustRegister(r)
 	defer r.Stop()

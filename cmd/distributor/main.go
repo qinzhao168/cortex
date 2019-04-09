@@ -62,7 +62,7 @@ func main() {
 	trace := tracing.NewFromEnv("distributor")
 	defer trace.Close()
 
-	r, err := ring.New(ringConfig)
+	r, err := ring.New(ringConfig, "ingester")
 	util.CheckFatal("initializing ring", err)
 	prometheus.MustRegister(r)
 	defer r.Stop()

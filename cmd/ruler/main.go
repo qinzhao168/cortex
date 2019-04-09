@@ -29,7 +29,7 @@ func main() {
 				middleware.ServerUserHeaderInterceptor,
 			},
 		}
-		lifecyclerConfig  ring.LifecyclerConfig
+		ringConfig        ring.Config
 		distributorConfig distributor.Config
 		clientConfig      client.Config
 		limits            validation.Limits
@@ -46,7 +46,7 @@ func main() {
 	trace := tracing.NewFromEnv("ruler")
 	defer trace.Close()
 
-	flagext.RegisterFlags(&serverConfig, &lifecyclerConfig, &distributorConfig, &clientConfig, &limits,
+	flagext.RegisterFlags(&serverConfig, &ringConfig, &distributorConfig, &clientConfig, &limits,
 		&rulerConfig, &ruleStoreConfig, &chunkStoreConfig, &storageConfig, &schemaConfig, &querierConfig)
 	flag.Parse()
 
@@ -58,7 +58,7 @@ func main() {
 	util.CheckFatal("", err)
 	defer chunkStore.Stop()
 
-	r, err := ring.New(lifecyclerConfig.RingConfig)
+	r, err := ring.New(ringConfig, "ingester")
 	util.CheckFatal("initializing ring", err)
 
 	prometheus.MustRegister(r)
@@ -75,9 +75,6 @@ func main() {
 	querierConfig.Timeout = rulerConfig.GroupTimeout
 	queryable, engine := querier.New(querierConfig, dist, chunkStore)
 
-	rulerConfig.LifecyclerConfig = lifecyclerConfig
-	rulerConfig.LifecyclerConfig.ListenPort = &serverConfig.GRPCListenPort
-	rulerConfig.LifecyclerConfig.RingConfig = ruler.CreateRulerRingConfig(lifecyclerConfig.RingConfig)
 	rlr, err := ruler.NewRuler(rulerConfig, engine, queryable, dist, ruleStore)
 	util.CheckFatal("error initializing ruler", err)
 	defer rlr.Stop()

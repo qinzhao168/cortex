@@ -30,12 +30,12 @@ func defaultRulerConfig() Config {
 	cfg := Config{}
 	flagext.DefaultValues(&cfg)
 	flagext.DefaultValues(&cfg.LifecyclerConfig)
+	cfg.LifecyclerConfig.RingConfig.ReplicationFactor = 1
 	cfg.LifecyclerConfig.RingConfig.Mock = consul
 	cfg.LifecyclerConfig.NumTokens = 1
 	cfg.LifecyclerConfig.ListenPort = func(i int) *int { return &i }(0)
 	cfg.LifecyclerConfig.Addr = "localhost"
 	cfg.LifecyclerConfig.ID = "localhost"
-	cfg.LifecyclerConfig.RingConfig = CreateRulerRingConfig(cfg.LifecyclerConfig.RingConfig)
 	return cfg
 }
 

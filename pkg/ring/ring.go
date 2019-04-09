@@ -56,7 +56,6 @@ var ErrEmptyRing = errors.New("empty ring")
 
 // Config for a Ring
 type Config struct {
-	Name              string        `yaml:"name,omitempty"`
 	Consul            ConsulConfig  `yaml:"consul,omitempty"`
 	Store             string        `yaml:"store,omitempty"`
 	HeartbeatTimeout  time.Duration `yaml:"heartbeat_timeout,omitempty"`
@@ -65,17 +64,23 @@ type Config struct {
 	Mock KVClient
 }
 
-// RegisterFlags adds the flags required to config this to the given FlagSet
+// RegisterFlags adds the flags required to config this to the given FlagSet with a specified prefix
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
-	cfg.Consul.RegisterFlags(f)
+	cfg.RegisterFlagsWithPrefix("", f)
+}
 
-	f.StringVar(&cfg.Store, "ring.store", "consul", "Backend storage to use for the ring (consul, inmemory).")
-	f.DurationVar(&cfg.HeartbeatTimeout, "ring.heartbeat-timeout", time.Minute, "The heartbeat timeout after which ingesters are skipped for reads/writes.")
-	f.IntVar(&cfg.ReplicationFactor, "distributor.replication-factor", 3, "The number of ingesters to write to and read from.")
+// RegisterFlagsWithPrefix adds the flags required to config this to the given FlagSet with a specified prefix
+func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
+	cfg.Consul.RegisterFlagsWithPrefix(prefix, f)
+
+	f.StringVar(&cfg.Store, prefix+"ring.store", "consul", "Backend storage to use for the ring (consul, inmemory).")
+	f.DurationVar(&cfg.HeartbeatTimeout, prefix+"ring.heartbeat-timeout", time.Minute, "The heartbeat timeout after which ingesters are skipped for reads/writes.")
+	f.IntVar(&cfg.ReplicationFactor, prefix+"distributor.replication-factor", 3, "The number of ingesters to write to and read from.")
 }
 
 // Ring holds the information about the members of the consistent hash ring.
 type Ring struct {
+	name     string
 	cfg      Config
 	KVClient KVClient
 	done     chan struct{}
@@ -91,7 +96,7 @@ type Ring struct {
 }
 
 // New creates a new Ring
-func New(cfg Config) (*Ring, error) {
+func New(cfg Config, name string) (*Ring, error) {
 	if cfg.ReplicationFactor <= 0 {
 		return nil, fmt.Errorf("ReplicationFactor must be greater than zero: %d", cfg.ReplicationFactor)
 	}
@@ -101,11 +106,8 @@ func New(cfg Config) (*Ring, error) {
 		return nil, err
 	}
 
-	if cfg.Name == "" {
-		cfg.Name = "ingester"
-	}
-
 	r := &Ring{
+		name:     name,
 		cfg:      cfg,
 		KVClient: store,
 		done:     make(chan struct{}),
@@ -113,22 +115,22 @@ func New(cfg Config) (*Ring, error) {
 		memberOwnershipDesc: prometheus.NewDesc(
 			"cortex_ring_member_ownership_percent",
 			"The percent ownership of the ring by member",
-			[]string{"member", "type"}, nil,
+			[]string{"member", "name"}, nil,
 		),
 		numMembersDesc: prometheus.NewDesc(
 			"cortex_ring_members",
 			"Number of members in the ring",
-			[]string{"state", "type"}, nil,
+			[]string{"state", "name"}, nil,
 		),
 		totalTokensDesc: prometheus.NewDesc(
 			"cortex_ring_tokens_total",
 			"Number of tokens in the ring",
-			[]string{"type"}, nil,
+			[]string{"name"}, nil,
 		),
 		numTokensDesc: prometheus.NewDesc(
 			"cortex_ring_tokens_owned",
 			"The number of tokens in the ring owned by the member",
-			[]string{"member", "type"}, nil,
+			[]string{"member", "name"}, nil,
 		),
 	}
 	var ctx context.Context
@@ -342,14 +344,14 @@ func (r *Ring) Collect(ch chan<- prometheus.Metric) {
 			prometheus.GaugeValue,
 			float64(totalOwned)/float64(math.MaxUint32),
 			id,
-			r.cfg.Name,
+			r.name,
 		)
 		ch <- prometheus.MustNewConstMetric(
 			r.numTokensDesc,
 			prometheus.GaugeValue,
 			float64(numTokens[id]),
 			id,
-			r.cfg.Name,
+			r.name,
 		)
 	}
 
@@ -375,13 +377,13 @@ func (r *Ring) Collect(ch chan<- prometheus.Metric) {
 			prometheus.GaugeValue,
 			float64(count),
 			state,
-			r.cfg.Name,
+			r.name,
 		)
 	}
 	ch <- prometheus.MustNewConstMetric(
 		r.totalTokensDesc,
 		prometheus.GaugeValue,
 		float64(len(r.ringDesc.Tokens)),
-		r.cfg.Name,
+		r.name,
 	)
 }

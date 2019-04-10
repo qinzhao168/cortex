@@ -17,24 +17,24 @@ type worker struct {
 	scheduler *scheduler
 	ruler     *Ruler
 
-	done       chan struct{}
-	terminated chan struct{}
+	quit chan struct{}
+	done chan struct{}
 }
 
 func newWorker(ruler *Ruler) worker {
 	return worker{
-		scheduler:  ruler.scheduler,
-		ruler:      ruler,
-		done:       make(chan struct{}),
-		terminated: make(chan struct{}),
+		scheduler: ruler.scheduler,
+		ruler:     ruler,
+		quit:      make(chan struct{}),
+		done:      make(chan struct{}),
 	}
 }
 
 func (w *worker) Run() {
-	defer close(w.terminated)
+	defer close(w.done)
 	for {
 		select {
-		case <-w.done:
+		case <-w.quit:
 			return
 		default:
 		}
@@ -58,6 +58,6 @@ func (w *worker) Run() {
 }
 
 func (w *worker) Stop() {
-	close(w.done)
-	<-w.terminated
+	close(w.quit)
+	<-w.done
 }

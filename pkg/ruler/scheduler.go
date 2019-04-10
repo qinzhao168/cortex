@@ -273,10 +273,10 @@ func (s *scheduler) addUserConfig(now time.Time, hasher hash.Hash64, generation 
 		ringHasher.Write([]byte(userID + ":" + group))
 		hash := ringHasher.Sum32()
 		workItems = append(workItems, workItem{userID, group, hash, g, evalTime, generation})
-		for _, i := range workItems {
-			totalRuleGroups.Inc()
-			s.addWorkItem(i)
-		}
+	}
+	for _, i := range workItems {
+		totalRuleGroups.Inc()
+		s.addWorkItem(i)
 	}
 }
 

@@ -107,7 +107,6 @@ type scheduler struct {
 	groupFn      groupFactory          // function to create a new group
 	sync.RWMutex
 
-	stop chan struct{}
 	done chan struct{}
 }
 

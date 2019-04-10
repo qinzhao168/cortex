@@ -149,6 +149,10 @@ type Ruler struct {
 
 // NewRuler creates a new ruler from a distributor and chunk store.
 func NewRuler(cfg Config, engine *promql.Engine, queryable storage.Queryable, d *distributor.Distributor, rulesAPI RulesAPI) (*Ruler, error) {
+	if cfg.NumWorkers <= 0 {
+		return nil, fmt.Errorf("must have at least 1 worker, got %d", cfg.NumWorkers)
+	}
+
 	ncfg, err := buildNotifierConfig(&cfg)
 	if err != nil {
 		return nil, err
@@ -178,10 +182,6 @@ func NewRuler(cfg Config, engine *promql.Engine, queryable storage.Queryable, d 
 		if err != nil {
 			return nil, err
 		}
-	}
-
-	if cfg.NumWorkers <= 0 {
-		return nil, fmt.Errorf("must have at least 1 worker, got %d", cfg.NumWorkers)
 	}
 
 	workers := make([]worker, cfg.NumWorkers)
@@ -217,8 +217,10 @@ func (r *Ruler) Stop() {
 		w.Stop()
 	}
 
-	r.lifecycler.Shutdown()
-	r.ring.Stop()
+	if r.cfg.EnableSharding {
+		r.lifecycler.Shutdown()
+		r.ring.Stop()
+	}
 }
 
 func (r *Ruler) newGroup(userID string, groupName string, rls []rules.Rule) (*group, error) {
@@ -309,12 +311,9 @@ func (r *Ruler) getOrCreateNotifier(userID string) (*notifier.Manager, error) {
 func (r *Ruler) Evaluate(userID string, item *workItem) {
 	ctx := user.InjectOrgID(context.Background(), userID)
 	logger := util.WithContext(ctx, util.Logger)
-	if r.cfg.EnableSharding {
-		owned := r.checkRule(item.hash)
-		if !owned {
-			level.Debug(util.Logger).Log("msg", "ruler: skipping evaluation, not owned", "user_id", item.userID, "group", item.groupName)
-			return
-		}
+	if r.cfg.EnableSharding && !r.ownsRule(item.hash) {
+		level.Debug(util.Logger).Log("msg", "ruler: skipping evaluation, not owned", "user_id", item.userID, "group", item.groupName)
+		return
 	}
 	level.Debug(logger).Log("msg", "evaluating rules...", "num_rules", len(item.group.Rules()))
 	ctx, cancelTimeout := context.WithTimeout(ctx, r.cfg.GroupTimeout)
@@ -335,18 +334,20 @@ func (r *Ruler) Evaluate(userID string, item *workItem) {
 	rulesProcessed.Add(float64(len(item.group.Rules())))
 }
 
-func (r *Ruler) checkRule(hash uint32) bool {
+func (r *Ruler) ownsRule(hash uint32) bool {
 	rlrs, err := r.ring.Get(hash, ring.Read)
-	// If an error occurs keep evaluating a rule as if it is owned
+	// If an error occurs evaluate a rule as if it is owned
 	// better to have extra datapoints for a rule than none at all
+	// TODO: add a temporary cache of owned rule values or something to fall back on
 	if err != nil {
+		level.Warn(util.Logger).Log("msg", "error reading ring to verify rule group ownership", "err", err)
 		ringCheckErrors.Inc()
 		return true
 	}
 	if rlrs.Ingesters[0].Addr == r.lifecycler.Addr {
 		return true
 	}
-	level.Debug(util.Logger).Log("msg", "rule not owned, address does not match", "owner", rlrs.Ingesters[0].Addr, "current", r.cfg.LifecyclerConfig.Addr)
+	level.Debug(util.Logger).Log("msg", "rule group not owned, address does not match", "owner", rlrs.Ingesters[0].Addr, "current", r.cfg.LifecyclerConfig.Addr)
 	return false
 }
 

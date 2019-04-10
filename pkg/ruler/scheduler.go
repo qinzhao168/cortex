@@ -269,7 +269,8 @@ func (s *scheduler) addUserConfig(now time.Time, hasher hash.Hash64, generation 
 				return
 			}
 			ringHasher.Reset()
-			ringHasher.Write([]byte(userID + ":" + group))
+			ringHasher.Write([]byte(userID))
+			ringHasher.Write([]byte(group))
 			hash := ringHasher.Sum32()
 			workItems = append(workItems, workItem{userID, group, hash, g, evalTime, generation})
 		}

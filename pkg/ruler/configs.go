@@ -12,8 +12,8 @@ import (
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 )
 
-// RuleStoreConfig says where we can find the ruler configs.
-type RuleStoreConfig struct {
+// ConfigStoreConfig says where we can find the ruler configs.
+type ConfigStoreConfig struct {
 	DBConfig db.Config
 
 	// DEPRECATED
@@ -25,21 +25,21 @@ type RuleStoreConfig struct {
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet
-func (cfg *RuleStoreConfig) RegisterFlags(f *flag.FlagSet) {
+func (cfg *ConfigStoreConfig) RegisterFlags(f *flag.FlagSet) {
 	cfg.DBConfig.RegisterFlags(f)
 	f.Var(&cfg.ConfigsAPIURL, "ruler.configs.url", "DEPRECATED. URL of configs API server.")
 	f.DurationVar(&cfg.ClientTimeout, "ruler.client-timeout", 5*time.Second, "DEPRECATED. Timeout for requests to Weave Cloud configs service.")
 }
 
-// RuleStore is what the ruler needs from a config store to process rules.
-type RuleStore interface {
+// RulesAPI is what the ruler needs from a config store to process rules.
+type RulesAPI interface {
 	// GetConfigs returns all Cortex configurations from a configs API server
 	// that have been updated after the given configs.ID was last updated.
 	GetConfigs(since configs.ID) (map[string]configs.VersionedRulesConfig, error)
 }
 
-// NewRuleStore creates a new RuleStore.
-func NewRuleStore(cfg RuleStoreConfig) (RuleStore, error) {
+// NewRulesAPI creates a new RuleStore.
+func NewRulesAPI(cfg ConfigStoreConfig) (RulesAPI, error) {
 	// All of this falderal is to allow for a smooth transition away from
 	// using the configs server and toward directly connecting to the database.
 	// See https://github.com/cortexproject/cortex/issues/619

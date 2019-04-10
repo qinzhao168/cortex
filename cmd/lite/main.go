@@ -37,7 +37,7 @@ var (
 	querierConfig     querier.Config
 	ingesterConfig    ingester.Config
 	rulerConfig       ruler.Config
-	ruleStoreConfig   ruler.RuleStoreConfig
+	configStoreConfig ruler.ConfigStoreConfig
 	schemaConfig      chunk.SchemaConfig
 	storageConfig     storage.Config
 	tbmConfig         chunk.TableManagerConfig
@@ -93,8 +93,8 @@ func main() {
 
 	queryable, engine := querier.New(querierConfig, dist, chunkStore)
 
-	if ruleStoreConfig.ConfigsAPIURL.String() != "" || ruleStoreConfig.DBConfig.URI != "" {
-		ruleStore, err := ruler.NewRuleStore(ruleStoreConfig)
+	if configStoreConfig.ConfigsAPIURL.String() != "" || configStoreConfig.DBConfig.URI != "" {
+		ruleStore, err := ruler.NewRulesAPI(configStoreConfig)
 		util.CheckFatal("initializing ruler api", err)
 
 		rlr, err := ruler.NewRuler(rulerConfig, engine, queryable, dist, ruleStore)
@@ -134,8 +134,8 @@ func main() {
 	// Only serve the API for setting & getting rules configs if we're not
 	// serving configs from the configs API. Allows for smoother
 	// migration. See https://github.com/cortexproject/cortex/issues/619
-	if ruleStoreConfig.ConfigsAPIURL.URL == nil {
-		a, err := ruler.NewAPIFromConfig(ruleStoreConfig.DBConfig)
+	if configStoreConfig.ConfigsAPIURL.URL == nil {
+		a, err := ruler.NewAPIFromConfig(configStoreConfig.DBConfig)
 		util.CheckFatal("initializing public rules API", err)
 
 		a.RegisterRoutes(server.HTTP)
@@ -173,7 +173,7 @@ func getConfigsFromCommandLine() {
 	// Ingester needs to know our gRPC listen port.
 	ingesterConfig.LifecyclerConfig.ListenPort = &serverConfig.GRPCListenPort
 	flagext.RegisterFlags(&serverConfig, &chunkStoreConfig, &distributorConfig, &querierConfig,
-		&ingesterConfig, &rulerConfig, &ruleStoreConfig, &storageConfig, &schemaConfig,
+		&ingesterConfig, &rulerConfig, &configStoreConfig, &storageConfig, &schemaConfig,
 		&ingesterClientConfig, &limitsConfig, &tbmConfig)
 	flag.BoolVar(&unauthenticated, "unauthenticated", false, "Set to true to disable multitenancy.")
 	flag.Parse()

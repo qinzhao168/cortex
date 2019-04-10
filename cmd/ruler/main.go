@@ -34,12 +34,12 @@ func main() {
 		clientConfig      client.Config
 		limits            validation.Limits
 
-		rulerConfig      ruler.Config
-		ruleStoreConfig  ruler.RuleStoreConfig
-		chunkStoreConfig chunk.StoreConfig
-		schemaConfig     chunk.SchemaConfig
-		storageConfig    storage.Config
-		querierConfig    querier.Config
+		rulerConfig       ruler.Config
+		configStoreConfig ruler.ConfigStoreConfig
+		chunkStoreConfig  chunk.StoreConfig
+		schemaConfig      chunk.SchemaConfig
+		storageConfig     storage.Config
+		querierConfig     querier.Config
 	)
 
 	// Ruler Lifecycler needs to know our gRPC listen port.
@@ -50,7 +50,7 @@ func main() {
 	defer trace.Close()
 
 	flagext.RegisterFlags(&serverConfig, &ringConfig, &distributorConfig, &clientConfig, &limits,
-		&rulerConfig, &ruleStoreConfig, &chunkStoreConfig, &storageConfig, &schemaConfig, &querierConfig)
+		&rulerConfig, &configStoreConfig, &chunkStoreConfig, &storageConfig, &schemaConfig, &querierConfig)
 	flag.Parse()
 
 	util.InitLogger(&serverConfig)
@@ -71,14 +71,14 @@ func main() {
 	util.CheckFatal("initializing distributor", err)
 	defer dist.Stop()
 
-	ruleStore, err := ruler.NewRuleStore(ruleStoreConfig)
+	rulesAPI, err := ruler.NewRulesAPI(configStoreConfig)
 	util.CheckFatal("error initializing rules API", err)
 
 	querierConfig.MaxConcurrent = rulerConfig.NumWorkers
 	querierConfig.Timeout = rulerConfig.GroupTimeout
 	queryable, engine := querier.New(querierConfig, dist, chunkStore)
 
-	rlr, err := ruler.NewRuler(rulerConfig, engine, queryable, dist, ruleStore)
+	rlr, err := ruler.NewRuler(rulerConfig, engine, queryable, dist, rulesAPI)
 	util.CheckFatal("error initializing ruler", err)
 	defer rlr.Stop()
 
@@ -89,8 +89,8 @@ func main() {
 	// Only serve the API for setting & getting rules configs if we're not
 	// serving configs from the configs API. Allows for smoother
 	// migration. See https://github.com/cortexproject/cortex/issues/619
-	if ruleStoreConfig.ConfigsAPIURL.URL == nil {
-		a, err := ruler.NewAPIFromConfig(ruleStoreConfig.DBConfig)
+	if configStoreConfig.ConfigsAPIURL.URL == nil {
+		a, err := ruler.NewAPIFromConfig(configStoreConfig.DBConfig)
 		util.CheckFatal("initializing public rules API", err)
 
 		a.RegisterRoutes(server.HTTP)

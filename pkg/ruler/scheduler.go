@@ -96,7 +96,7 @@ type userConfig struct {
 type groupFactory func(userID string, groupName string, rls []rules.Rule) (*group, error)
 
 type scheduler struct {
-	ruleStore          RuleStore
+	ruleStore          RulesAPI
 	evaluationInterval time.Duration // how often we re-evaluate each rule set
 	q                  *SchedulingQueue
 
@@ -112,7 +112,7 @@ type scheduler struct {
 }
 
 // newScheduler makes a new scheduler.
-func newScheduler(ruleStore RuleStore, evaluationInterval, pollInterval time.Duration, groupFn groupFactory) *scheduler {
+func newScheduler(ruleStore RulesAPI, evaluationInterval, pollInterval time.Duration, groupFn groupFactory) *scheduler {
 	return &scheduler{
 		ruleStore:          ruleStore,
 		evaluationInterval: evaluationInterval,

@@ -29,7 +29,7 @@ var (
 	tokensToOwn = promauto.NewGaugeVec(prometheus.GaugeOpts{
 		Name: "cortex_member_ring_tokens_to_own",
 		Help: "The number of tokens to own in the ring.",
-	}, []string{"op", "status", "name"})
+	}, []string{"name"})
 	shutdownDuration = promauto.NewHistogramVec(prometheus.HistogramOpts{
 		Name:    "cortex_shutdown_duration_seconds",
 		Help:    "Duration (in seconds) of cortex shutdown procedure (ie transfer or flush).",

@@ -470,17 +470,17 @@ func (i *Lifecycler) processShutdown(ctx context.Context) {
 		transferStart := time.Now()
 		if err := i.flushTransferer.TransferOut(ctx); err != nil {
 			level.Error(util.Logger).Log("msg", "Failed to transfer chunks to another ingester", "err", err)
-			shutdownDuration.WithLabelValues("transfer", "fail").Observe(time.Since(transferStart).Seconds())
+			shutdownDuration.WithLabelValues("transfer", "fail", i.RingName).Observe(time.Since(transferStart).Seconds())
 		} else {
 			flushRequired = false
-			shutdownDuration.WithLabelValues("transfer", "success").Observe(time.Since(transferStart).Seconds())
+			shutdownDuration.WithLabelValues("transfer", "success", i.RingName).Observe(time.Since(transferStart).Seconds())
 		}
 	}
 
 	if flushRequired {
 		flushStart := time.Now()
 		i.flushTransferer.Flush()
-		shutdownDuration.WithLabelValues("flush", "success").Observe(time.Since(flushStart).Seconds())
+		shutdownDuration.WithLabelValues("flush", "success", i.RingName).Observe(time.Since(flushStart).Seconds())
 	}
 
 	// Sleep so the shutdownDuration metric can be collected.

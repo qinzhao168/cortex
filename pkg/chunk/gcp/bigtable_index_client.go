@@ -26,6 +26,7 @@ const (
 	column       = "c"
 	separator    = "\000"
 	maxRowReads  = 100
+	batchSize    = 1000
 	null         = string('\xff')
 )
 
@@ -289,8 +290,8 @@ func (s *storageClientColumnKey) DeletePages(ctx context.Context, query chunk.De
 	table := s.client.Open(query.TableName)
 
 	for {
-		rowKeys := make([]string, 0, query.BatchSize)
-		muts := make([]*bigtable.Mutation, 0, query.BatchSize)
+		rowKeys := make([]string, 0, batchSize)
+		muts := make([]*bigtable.Mutation, 0, batchSize)
 		err := table.ReadRows(ctx,
 			bigtable.PrefixRange(prefix),
 			func(row bigtable.Row) bool {
@@ -300,7 +301,7 @@ func (s *storageClientColumnKey) DeletePages(ctx context.Context, query chunk.De
 				muts = append(muts, mut)
 				return true
 			},
-			bigtable.LimitRows(query.BatchSize),
+			bigtable.LimitRows(batchSize),
 		)
 		if err != nil {
 			sp.LogFields(otlog.String("error", err.Error()))

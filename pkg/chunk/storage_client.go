@@ -23,6 +23,7 @@ type ObjectClient interface {
 
 	PutChunks(ctx context.Context, chunks []Chunk) error
 	GetChunks(ctx context.Context, chunks []Chunk) ([]Chunk, error)
+	DeleteChunks(ctx context.Context, chunks []Chunk) error
 }
 
 // WriteBatch represents a batch of writes.

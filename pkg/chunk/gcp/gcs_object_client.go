@@ -3,6 +3,7 @@ package gcp
 import (
 	"context"
 	"flag"
+	"fmt"
 	"io/ioutil"
 
 	"cloud.google.com/go/storage"
@@ -102,4 +103,9 @@ func (s *gcsObjectClient) getChunk(ctx context.Context, decodeContext *chunk.Dec
 	}
 
 	return input, nil
+}
+
+// DeleteChunks deletes chunks from the object store
+func (s *gcsObjectClient) DeleteChunks(ctx context.Context, chunks []chunk.Chunk) error {
+	return fmt.Errorf("not currently implemented")
 }

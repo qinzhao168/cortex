@@ -132,3 +132,8 @@ func (a s3ObjectClient) putS3Chunk(ctx context.Context, key string, buf []byte) 
 		return err
 	})
 }
+
+// DeleteChunks deletes chunks from the object store
+func (a s3ObjectClient) DeleteChunks(ctx context.Context, chunks []chunk.Chunk) error {
+	return fmt.Errorf("not currently implemented")
+}

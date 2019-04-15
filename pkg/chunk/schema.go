@@ -43,6 +43,8 @@ type Schema interface {
 
 	// If the query resulted in series IDs, use this method to find chunks.
 	GetChunksForSeries(from, through model.Time, userID string, seriesID []byte) ([]IndexQuery, error)
+
+	GetDeleteQueries(from, through model.Time, userID string) ([]DeleteQuery, error)
 }
 
 // IndexQuery describes a query for entries
@@ -69,7 +71,6 @@ type DeleteQuery struct {
 	TableName string
 	HashValue string
 	UserID    string
-	BatchSize int64
 }
 
 // IndexEntry describes an entry in the chunk index
@@ -200,6 +201,20 @@ func (s schema) GetChunksForSeries(from, through model.Time, userID string, seri
 			return nil, err
 		}
 		result = append(result, entries...)
+	}
+	return result, nil
+}
+
+func (s schema) GetDeleteQueries(from, through model.Time, userID string) ([]DeleteQuery, error) {
+	var result []DeleteQuery
+
+	buckets := s.buckets(from, through, userID)
+	for _, bucket := range buckets {
+		result = append(result, DeleteQuery{
+			TableName: bucket.tableName,
+			HashValue: "",
+			UserID:    userID,
+		})
 	}
 	return result, nil
 }

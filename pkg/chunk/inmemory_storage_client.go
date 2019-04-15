@@ -315,6 +315,11 @@ func (m *MockStorage) GetChunks(ctx context.Context, chunkSet []Chunk) ([]Chunk,
 	return result, nil
 }
 
+// DeleteChunks deletes chunks from the object store
+func (m *MockStorage) DeleteChunks(ctx context.Context, chunks []Chunk) error {
+	return fmt.Errorf("not currently implemented")
+}
+
 type mockWriteBatch []struct {
 	tableName, hashValue string
 	rangeValue           []byte

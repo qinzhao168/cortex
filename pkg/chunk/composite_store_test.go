@@ -25,6 +25,10 @@ func (m mockStore) Get(tx context.Context, from, through model.Time, matchers ..
 	return nil, nil
 }
 
+func (m mockStore) LabelNamesForMetricName(ctx context.Context, from, through model.Time, metricName string) ([]string, error) {
+	return nil, nil
+}
+
 func (m mockStore) Stop() {}
 
 func TestCompositeStore(t *testing.T) {

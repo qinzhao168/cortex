@@ -15,6 +15,7 @@ type Store interface {
 	Put(ctx context.Context, chunks []Chunk) error
 	PutOne(ctx context.Context, from, through model.Time, chunk Chunk) error
 	Get(tx context.Context, from, through model.Time, matchers ...*labels.Matcher) ([]Chunk, error)
+	LabelNamesForMetricName(ctx context.Context, from, through model.Time, metricName string) ([]string, error)
 	Stop()
 }
 
@@ -86,6 +87,20 @@ func (c compositeStore) Get(ctx context.Context, from, through model.Time, match
 		return nil
 	})
 	return results, err
+}
+
+// LabelNamesForMetricName retrieves all label names for a metric name.
+func (c compositeStore) LabelNamesForMetricName(ctx context.Context, from, through model.Time, metricName string) ([]string, error) {
+	var result []string
+	err := c.forStores(from, through, func(from, through model.Time, store Store) error {
+		labelNames, err := store.LabelNamesForMetricName(ctx, from, through, metricName)
+		if err != nil {
+			return err
+		}
+		result = append(result, labelNames...)
+		return nil
+	})
+	return result, err
 }
 
 func (c compositeStore) Stop() {

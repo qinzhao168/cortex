@@ -665,11 +665,6 @@ func (a dynamoDBStorageClient) PutChunks(ctx context.Context, chunks []chunk.Chu
 	return a.BatchWrite(ctx, dynamoDBWrites)
 }
 
-// DeleteChunks deletes chunks from the object store
-func (a dynamoDBStorageClient) DeleteChunks(ctx context.Context, chunks []chunk.Chunk) error {
-	return fmt.Errorf("not currently implemented")
-}
-
 // Slice of values returned; map key is attribute name
 type dynamoDBReadResponse struct {
 	items []map[string]*dynamodb.AttributeValue

@@ -160,8 +160,3 @@ func (s *bigtableObjectClient) GetChunks(ctx context.Context, input []chunk.Chun
 
 	return output, nil
 }
-
-// DeleteChunks deletes chunks from the object store
-func (s *bigtableObjectClient) DeleteChunks(ctx context.Context, chunks []chunk.Chunk) error {
-	return fmt.Errorf("not currently implemented")
-}

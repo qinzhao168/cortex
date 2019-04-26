@@ -310,8 +310,3 @@ func (s *StorageClient) getChunk(ctx context.Context, decodeContext *chunk.Decod
 	err = input.Decode(decodeContext, buf)
 	return input, err
 }
-
-// DeleteChunks deletes chunks from the object store
-func (s *StorageClient) DeleteChunks(ctx context.Context, chunks []chunk.Chunk) error {
-	return fmt.Errorf("not currently implemented")
-}

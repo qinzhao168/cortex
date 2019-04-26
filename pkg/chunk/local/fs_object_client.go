@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/base64"
 	"flag"
-	"fmt"
 	"io/ioutil"
 	"path"
 
@@ -70,9 +69,4 @@ func (f *fsObjectClient) getChunk(_ context.Context, decodeContext *chunk.Decode
 	}
 
 	return c, nil
-}
-
-// DeleteChunks deletes chunks from the object store
-func (f *fsObjectClient) DeleteChunks(ctx context.Context, chunks []chunk.Chunk) error {
-	return fmt.Errorf("not currently implemented")
 }

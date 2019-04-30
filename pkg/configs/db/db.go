@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"net/url"
+	"time"
 
 	"github.com/cortexproject/cortex/pkg/configs"
 	"github.com/cortexproject/cortex/pkg/configs/db/memory"
@@ -38,7 +39,7 @@ type RulesDB interface {
 	GetAllRulesConfigs() (map[string]configs.VersionedRulesConfig, error)
 	// GetRulesConfigs gets all of the configs that have been added or have
 	// changed since the provided config.
-	GetRulesConfigs(since configs.ID) (map[string]configs.VersionedRulesConfig, error)
+	GetRulesConfigs(since time.Time) (map[string]configs.VersionedRulesConfig, error)
 }
 
 // DB is the interface for the database.
@@ -49,7 +50,7 @@ type DB interface {
 	SetConfig(userID string, cfg configs.Config) error
 
 	GetAllConfigs() (map[string]configs.View, error)
-	GetConfigs(since configs.ID) (map[string]configs.View, error)
+	GetConfigs(since time.Time) (map[string]configs.View, error)
 
 	DeactivateConfig(userID string) error
 	RestoreConfig(userID string) error

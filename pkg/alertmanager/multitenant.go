@@ -239,8 +239,8 @@ type MultitenantAlertmanager struct {
 	alertmanagersMtx sync.Mutex
 	alertmanagers    map[string]*Alertmanager
 
-	latestConfig configs.ID
-	latestMutex  sync.RWMutex
+	latestPoll  time.Time
+	latestMutex sync.RWMutex
 
 	meshRouter   *gossipFactory
 	srvDiscovery *srvDiscovery
@@ -363,11 +363,12 @@ func (am *MultitenantAlertmanager) updateConfigs(now time.Time) error {
 
 // poll the configuration server. Not re-entrant.
 func (am *MultitenantAlertmanager) poll() (map[string]configs.View, error) {
-	configID := am.latestConfig
+	latestPoll := am.latestPoll
 	var cfgs *configs_client.ConfigsResponse
+	now := time.Now()
 	err := instrument.CollectedRequest(context.Background(), "Configs.GetOrgConfigs", configsRequestDuration, instrument.ErrorCode, func(_ context.Context) error {
 		var err error
-		cfgs, err = am.configsAPI.GetConfigs(configID)
+		cfgs, err = am.configsAPI.GetConfigs(latestPoll)
 		return err
 	})
 	if err != nil {
@@ -375,7 +376,7 @@ func (am *MultitenantAlertmanager) poll() (map[string]configs.View, error) {
 		return nil, err
 	}
 	am.latestMutex.Lock()
-	am.latestConfig = cfgs.GetLatestConfigID()
+	am.latestPoll = now
 	am.latestMutex.Unlock()
 	return cfgs.Configs, nil
 }

@@ -35,7 +35,7 @@ func (cfg *ConfigStoreConfig) RegisterFlags(f *flag.FlagSet) {
 type RulesAPI interface {
 	// GetConfigs returns all Cortex configurations from a configs API server
 	// that have been updated after the given configs.ID was last updated.
-	GetConfigs(since configs.ID) (map[string]configs.VersionedRulesConfig, error)
+	GetConfigs(since time.Time) (map[string]configs.VersionedRulesConfig, error)
 }
 
 // NewRulesAPI creates a new RuleStore.
@@ -63,10 +63,10 @@ type configsClient struct {
 }
 
 // GetConfigs implements RuleStore.
-func (c configsClient) GetConfigs(since configs.ID) (map[string]configs.VersionedRulesConfig, error) {
+func (c configsClient) GetConfigs(since time.Time) (map[string]configs.VersionedRulesConfig, error) {
 	suffix := ""
-	if since != 0 {
-		suffix = fmt.Sprintf("?since=%d", since)
+	if since.Unix() != 0 {
+		suffix = fmt.Sprintf("?since=%d", since.Unix())
 	}
 	endpoint := fmt.Sprintf("%s/private/api/prom/configs/rules%s", c.URL.String(), suffix)
 	response, err := configs_client.GetConfigs(endpoint, c.Timeout, since)
@@ -88,21 +88,9 @@ type dbStore struct {
 }
 
 // GetConfigs implements RuleStore.
-func (d dbStore) GetConfigs(since configs.ID) (map[string]configs.VersionedRulesConfig, error) {
-	if since == 0 {
+func (d dbStore) GetConfigs(since time.Time) (map[string]configs.VersionedRulesConfig, error) {
+	if since.Unix() == 0 {
 		return d.db.GetAllRulesConfigs()
 	}
 	return d.db.GetRulesConfigs(since)
-}
-
-// getLatestConfigID gets the latest configs ID.
-// max [latest, max (map getID cfgs)]
-func getLatestConfigID(cfgs map[string]configs.VersionedRulesConfig, latest configs.ID) configs.ID {
-	ret := latest
-	for _, config := range cfgs {
-		if config.ID > ret {
-			ret = config.ID
-		}
-	}
-	return ret
 }

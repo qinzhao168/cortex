@@ -2,7 +2,6 @@ package gcp
 
 import (
 	"context"
-	"flag"
 	"io/ioutil"
 
 	"cloud.google.com/go/storage"
@@ -19,21 +18,9 @@ type gcsObjectClient struct {
 	bucket    *storage.BucketHandle
 }
 
-// GCSConfig is config for the GCS Chunk Client.
-type GCSConfig struct {
-	BucketName      string `yaml:"bucket_name"`
-	ChunkBufferSize int    `yaml:"chunk_buffer_size"`
-}
-
-// RegisterFlags registers flags.
-func (cfg *GCSConfig) RegisterFlags(f *flag.FlagSet) {
-	f.StringVar(&cfg.BucketName, "gcs.bucketname", "", "Name of GCS bucket to put chunks in.")
-	f.IntVar(&cfg.ChunkBufferSize, "gcs.chunk-buffer-size", 0, "The size of the buffer that GCS client for each PUT request. 0 to disable buffering.")
-}
-
 // NewGCSObjectClient makes a new chunk.ObjectClient that writes chunks to GCS.
 func NewGCSObjectClient(ctx context.Context, cfg GCSConfig, schemaCfg chunk.SchemaConfig) (chunk.ObjectClient, error) {
-	option, err := gcsInstrumentation(ctx)
+	option, err := gcsInstrumentation(ctx, "chunk")
 	if err != nil {
 		return nil, err
 	}

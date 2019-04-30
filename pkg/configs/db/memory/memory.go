@@ -10,14 +10,19 @@ import (
 
 // DB is an in-memory database for testing, and local development
 type DB struct {
-	cfgs map[string]configs.View
+	cfgs map[string]entry
 	id   uint
+}
+
+type entry struct {
+	view    configs.View
+	updated time.Time
 }
 
 // New creates a new in-memory database
 func New(_, _ string) (*DB, error) {
 	return &DB{
-		cfgs: map[string]configs.View{},
+		cfgs: map[string]entry{},
 		id:   0,
 	}, nil
 }
@@ -28,7 +33,7 @@ func (d *DB) GetConfig(userID string) (configs.View, error) {
 	if !ok {
 		return configs.View{}, sql.ErrNoRows
 	}
-	return c, nil
+	return c.view, nil
 }
 
 // SetConfig sets configuration for a user.
@@ -36,22 +41,31 @@ func (d *DB) SetConfig(userID string, cfg configs.Config) error {
 	if !cfg.RulesConfig.FormatVersion.IsValid() {
 		return fmt.Errorf("invalid rule format version %v", cfg.RulesConfig.FormatVersion)
 	}
-	d.cfgs[userID] = configs.View{Config: cfg, ID: configs.ID(d.id)}
+	d.cfgs[userID] = entry{
+		configs.View{Config: cfg, ID: configs.ID(d.id)},
+		time.Now(),
+	}
 	d.id++
 	return nil
 }
 
 // GetAllConfigs gets all of the configs.
 func (d *DB) GetAllConfigs() (map[string]configs.View, error) {
-	return d.cfgs, nil
+	configMap := map[string]configs.View{}
+	for user, cfg := range d.cfgs {
+		configMap[user] = cfg.view
+	}
+	return configMap, nil
 }
 
 // GetConfigs gets all of the configs that have changed recently.
-func (d *DB) GetConfigs(since configs.ID) (map[string]configs.View, error) {
+func (d *DB) GetConfigs(since time.Time) (map[string]configs.View, error) {
 	cfgs := map[string]configs.View{}
-	for user, c := range d.cfgs {
-		if c.ID > since {
-			cfgs[user] = c
+	fmt.Println(since.Unix())
+	for user, cfg := range d.cfgs {
+		fmt.Printf("id: %v  time:%d\n", cfg.view.ID, cfg.updated.Unix())
+		if cfg.updated.After(since) {
+			cfgs[user] = cfg.view
 		}
 	}
 	return cfgs, nil
@@ -67,7 +81,10 @@ func (d *DB) SetDeletedAtConfig(userID string, deletedAt time.Time) error {
 	}
 	cv.DeletedAt = deletedAt
 	cv.ID = configs.ID(d.id)
-	d.cfgs[userID] = cv
+	d.cfgs[userID] = entry{
+		cv,
+		time.Now(),
+	}
 	d.id++
 	return nil
 }
@@ -93,7 +110,7 @@ func (d *DB) GetRulesConfig(userID string) (configs.VersionedRulesConfig, error)
 	if !ok {
 		return configs.VersionedRulesConfig{}, sql.ErrNoRows
 	}
-	cfg := c.GetVersionedRulesConfig()
+	cfg := c.view.GetVersionedRulesConfig()
 	if cfg == nil {
 		return configs.VersionedRulesConfig{}, sql.ErrNoRows
 	}
@@ -106,11 +123,11 @@ func (d *DB) SetRulesConfig(userID string, oldConfig, newConfig configs.RulesCon
 	if !ok {
 		return true, d.SetConfig(userID, configs.Config{RulesConfig: newConfig})
 	}
-	if !oldConfig.Equal(c.Config.RulesConfig) {
+	if !oldConfig.Equal(c.view.Config.RulesConfig) {
 		return false, nil
 	}
 	return true, d.SetConfig(userID, configs.Config{
-		AlertmanagerConfig: c.Config.AlertmanagerConfig,
+		AlertmanagerConfig: c.view.Config.AlertmanagerConfig,
 		RulesConfig:        newConfig,
 	})
 }
@@ -119,7 +136,7 @@ func (d *DB) SetRulesConfig(userID string, oldConfig, newConfig configs.RulesCon
 func (d *DB) GetAllRulesConfigs() (map[string]configs.VersionedRulesConfig, error) {
 	cfgs := map[string]configs.VersionedRulesConfig{}
 	for user, c := range d.cfgs {
-		cfg := c.GetVersionedRulesConfig()
+		cfg := c.view.GetVersionedRulesConfig()
 		if cfg != nil {
 			cfgs[user] = *cfg
 		}
@@ -129,13 +146,13 @@ func (d *DB) GetAllRulesConfigs() (map[string]configs.VersionedRulesConfig, erro
 
 // GetRulesConfigs gets the rules configs that have changed
 // since the given config version.
-func (d *DB) GetRulesConfigs(since configs.ID) (map[string]configs.VersionedRulesConfig, error) {
+func (d *DB) GetRulesConfigs(since time.Time) (map[string]configs.VersionedRulesConfig, error) {
 	cfgs := map[string]configs.VersionedRulesConfig{}
 	for user, c := range d.cfgs {
-		if c.ID <= since {
+		if !c.updated.After(since) {
 			continue
 		}
-		cfg := c.GetVersionedRulesConfig()
+		cfg := c.view.GetVersionedRulesConfig()
 		if cfg != nil {
 			cfgs[user] = *cfg
 		}

@@ -2,6 +2,7 @@ package db
 
 import (
 	"context"
+	"time"
 
 	"github.com/cortexproject/cortex/pkg/configs"
 	"github.com/prometheus/client_golang/prometheus"
@@ -61,7 +62,7 @@ func (t timed) GetAllConfigs() (cfgs map[string]configs.View, err error) {
 	return
 }
 
-func (t timed) GetConfigs(since configs.ID) (cfgs map[string]configs.View, err error) {
+func (t timed) GetConfigs(since time.Time) (cfgs map[string]configs.View, err error) {
 	t.timeRequest("GetConfigs", func(_ context.Context) error {
 		cfgs, err = t.d.GetConfigs(since)
 		return err
@@ -111,7 +112,7 @@ func (t timed) GetAllRulesConfigs() (cfgs map[string]configs.VersionedRulesConfi
 	return
 }
 
-func (t timed) GetRulesConfigs(since configs.ID) (cfgs map[string]configs.VersionedRulesConfig, err error) {
+func (t timed) GetRulesConfigs(since time.Time) (cfgs map[string]configs.VersionedRulesConfig, err error) {
 	t.timeRequest("GetRulesConfigs", func(_ context.Context) error {
 		cfgs, err = t.d.GetRulesConfigs(since)
 		return err

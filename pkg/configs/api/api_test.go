@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -207,11 +208,13 @@ func Test_GetConfigs_IncludesNewerConfigsAndExcludesOlder(t *testing.T) {
 
 	for _, c := range allClients {
 		c.post(t, makeUserID(), makeConfig())
-		config2 := c.post(t, makeUserID(), makeConfig())
+		c.post(t, makeUserID(), makeConfig())
+		time.Sleep(1 * time.Second)
+		now := time.Now()
 		userID3 := makeUserID()
 		config3 := c.post(t, userID3, makeConfig())
 
-		w := request(t, "GET", fmt.Sprintf("%s?since=%d", c.PrivateEndpoint, config2.ID), nil)
+		w := request(t, "GET", fmt.Sprintf("%s?since=%d", c.PrivateEndpoint, now.Unix()), nil)
 		assert.Equal(t, http.StatusOK, w.Code)
 		var found api.ConfigsView
 		err := json.Unmarshal(w.Body.Bytes(), &found)

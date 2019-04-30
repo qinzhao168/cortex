@@ -2,6 +2,7 @@ package db
 
 import (
 	"fmt"
+	"time"
 
 	"github.com/cortexproject/cortex/pkg/configs"
 	"github.com/cortexproject/cortex/pkg/util"
@@ -32,7 +33,7 @@ func (t traced) GetAllConfigs() (cfgs map[string]configs.View, err error) {
 	return t.d.GetAllConfigs()
 }
 
-func (t traced) GetConfigs(since configs.ID) (cfgs map[string]configs.View, err error) {
+func (t traced) GetConfigs(since time.Time) (cfgs map[string]configs.View, err error) {
 	defer func() { t.trace("GetConfigs", since, cfgs, err) }()
 	return t.d.GetConfigs(since)
 }
@@ -67,7 +68,7 @@ func (t traced) GetAllRulesConfigs() (cfgs map[string]configs.VersionedRulesConf
 	return t.d.GetAllRulesConfigs()
 }
 
-func (t traced) GetRulesConfigs(since configs.ID) (cfgs map[string]configs.VersionedRulesConfig, err error) {
+func (t traced) GetRulesConfigs(since time.Time) (cfgs map[string]configs.VersionedRulesConfig, err error) {
 	defer func() { t.trace("GetConfigs", since, cfgs, err) }()
 	return t.d.GetRulesConfigs(since)
 }

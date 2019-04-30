@@ -21,7 +21,7 @@ import (
 
 type mockRuleStore struct{}
 
-func (m *mockRuleStore) GetConfigs(since configs.ID) (map[string]configs.VersionedRulesConfig, error) {
+func (m *mockRuleStore) GetConfigs(since time.Time) (map[string]configs.VersionedRulesConfig, error) {
 	return map[string]configs.VersionedRulesConfig{}, nil
 }
 

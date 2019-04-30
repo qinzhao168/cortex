@@ -102,9 +102,9 @@ type scheduler struct {
 
 	pollInterval time.Duration // how often we check for new config
 
-	cfgs         map[string]userConfig // all rules for all users
-	latestConfig configs.ID            // # of last update received from config
-	groupFn      groupFactory          // function to create a new group
+	cfgs       map[string]userConfig // all rules for all users
+	latestPoll time.Time             // # of last update received from config
+	groupFn    groupFactory          // function to create a new group
 	sync.RWMutex
 
 	done chan struct{}
@@ -116,6 +116,7 @@ func newScheduler(ruleStore RulesAPI, evaluationInterval, pollInterval time.Dura
 		ruleStore:          ruleStore,
 		evaluationInterval: evaluationInterval,
 		pollInterval:       pollInterval,
+		latestPoll:         time.Unix(0, 0),
 		q:                  NewSchedulingQueue(clockwork.NewRealClock()),
 		cfgs:               map[string]userConfig{},
 		groupFn:            groupFn,
@@ -178,22 +179,21 @@ func (s *scheduler) updateConfigs(now time.Time) error {
 
 // poll the configuration server. Not re-entrant.
 func (s *scheduler) poll() (map[string]configs.VersionedRulesConfig, error) {
-	s.Lock()
-	configID := s.latestConfig
-	s.Unlock()
+	now := time.Now() // Record the timestamp before the poll
 	var cfgs map[string]configs.VersionedRulesConfig
+
 	err := instrument.CollectedRequest(context.Background(), "Configs.GetConfigs", configsRequestDuration, instrument.ErrorCode, func(_ context.Context) error {
 		var err error
-		cfgs, err = s.ruleStore.GetConfigs(configID) // Warning: this will produce an incorrect result if the configID ever overflows
+		cfgs, err = s.ruleStore.GetConfigs(s.latestPoll) // Warning: this will produce an incorrect result if the configID ever overflows
 		return err
 	})
 	if err != nil {
 		level.Warn(util.Logger).Log("msg", "scheduler: configs server poll failed", "err", err)
 		return nil, err
 	}
-	s.Lock()
-	s.latestConfig = getLatestConfigID(cfgs, configID)
-	s.Unlock()
+
+	s.latestPoll = now // If no errors are thrown ensure next poll does not retrieve already retrieved timestamps
+
 	return cfgs, nil
 }
 
@@ -218,12 +218,9 @@ func (s *scheduler) addNewConfigs(now time.Time, cfgs map[string]configs.Version
 	// TODO: instrument how many configs we have, both valid & invalid.
 	level.Debug(util.Logger).Log("msg", "adding configurations", "num_configs", len(cfgs))
 	hasher := fnv.New64a()
-	s.Lock()
-	generation := s.latestConfig
-	s.Unlock()
 
 	for userID, config := range cfgs {
-		s.addUserConfig(now, hasher, generation, userID, config)
+		s.addUserConfig(now, hasher, userID, config)
 	}
 
 	configUpdates.Add(float64(len(cfgs)))
@@ -233,7 +230,7 @@ func (s *scheduler) addNewConfigs(now time.Time, cfgs map[string]configs.Version
 	totalConfigs.Set(float64(lenCfgs))
 }
 
-func (s *scheduler) addUserConfig(now time.Time, hasher hash.Hash64, generation configs.ID, userID string, config configs.VersionedRulesConfig) {
+func (s *scheduler) addUserConfig(now time.Time, hasher hash.Hash64, userID string, config configs.VersionedRulesConfig) {
 	rulesByGroup, err := config.Config.Parse()
 	if err != nil {
 		// XXX: This means that if a user has a working configuration and

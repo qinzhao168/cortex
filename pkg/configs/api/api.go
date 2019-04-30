@@ -8,6 +8,7 @@ import (
 	"io/ioutil"
 	"net/http"
 	"strconv"
+	"time"
 
 	"github.com/go-kit/kit/log/level"
 	"github.com/gorilla/mux"
@@ -208,13 +209,13 @@ func (a *API) getConfigs(w http.ResponseWriter, r *http.Request) {
 	if rawSince == "" {
 		cfgs, cfgErr = a.db.GetAllConfigs()
 	} else {
-		since, err := strconv.ParseUint(rawSince, 10, 0)
+		since, err := strconv.ParseInt(rawSince, 10, 0)
 		if err != nil {
-			level.Info(logger).Log("msg", "invalid config ID", "err", err)
+			level.Info(logger).Log("msg", "invalid since timestamp", "err", err)
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
-		cfgs, cfgErr = a.db.GetConfigs(configs.ID(since))
+		cfgs, cfgErr = a.db.GetConfigs(time.Unix(since, 0))
 	}
 
 	if cfgErr != nil {

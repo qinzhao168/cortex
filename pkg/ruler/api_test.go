@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -29,6 +30,7 @@ var (
 	database   db.DB
 	counter    int
 	privateAPI RulesAPI
+	zeroTime   = time.Unix(0, 0)
 )
 
 // setup sets up the environment for the tests.
@@ -339,7 +341,7 @@ func Test_GetAllConfigs_Empty(t *testing.T) {
 	setup(t)
 	defer cleanup(t)
 
-	configs, err := privateAPI.GetConfigs(0)
+	configs, err := privateAPI.GetConfigs(zeroTime)
 	assert.NoError(t, err, "error getting configs")
 	assert.Equal(t, 0, len(configs))
 }
@@ -352,8 +354,7 @@ func Test_GetAllConfigs(t *testing.T) {
 	userID := makeUserID()
 	config := makeRulerConfig(configs.RuleFormatV2)
 	view := post(t, userID, configs.RulesConfig{}, config)
-
-	found, err := privateAPI.GetConfigs(0)
+	found, err := privateAPI.GetConfigs(zeroTime)
 	assert.NoError(t, err, "error getting configs")
 	assert.Equal(t, map[string]configs.VersionedRulesConfig{
 		userID: view,
@@ -371,7 +372,7 @@ func Test_GetAllConfigs_Newest(t *testing.T) {
 	config2 := post(t, userID, config1.Config, makeRulerConfig(configs.RuleFormatV2))
 	lastCreated := post(t, userID, config2.Config, makeRulerConfig(configs.RuleFormatV2))
 
-	found, err := privateAPI.GetConfigs(0)
+	found, err := privateAPI.GetConfigs(zeroTime)
 	assert.NoError(t, err, "error getting configs")
 	assert.Equal(t, map[string]configs.VersionedRulesConfig{
 		userID: lastCreated,
@@ -383,11 +384,12 @@ func Test_GetConfigs_IncludesNewerConfigsAndExcludesOlder(t *testing.T) {
 	defer cleanup(t)
 
 	post(t, makeUserID(), configs.RulesConfig{}, makeRulerConfig(configs.RuleFormatV2))
-	config2 := post(t, makeUserID(), configs.RulesConfig{}, makeRulerConfig(configs.RuleFormatV2))
+	post(t, makeUserID(), configs.RulesConfig{}, makeRulerConfig(configs.RuleFormatV2))
+	since := time.Now()
 	userID3 := makeUserID()
 	config3 := post(t, userID3, configs.RulesConfig{}, makeRulerConfig(configs.RuleFormatV2))
 
-	found, err := privateAPI.GetConfigs(config2.ID)
+	found, err := privateAPI.GetConfigs(since)
 	assert.NoError(t, err, "error getting configs")
 	assert.Equal(t, map[string]configs.VersionedRulesConfig{
 		userID3: config3,
@@ -432,7 +434,7 @@ func Test_AlertmanagerConfig_NotInAllConfigs(t *testing.T) {
             - name: noop`)
 	postAlertmanagerConfig(t, makeUserID(), config)
 
-	found, err := privateAPI.GetConfigs(0)
+	found, err := privateAPI.GetConfigs(zeroTime)
 	assert.NoError(t, err, "error getting configs")
 	assert.Equal(t, map[string]configs.VersionedRulesConfig{}, found)
 }

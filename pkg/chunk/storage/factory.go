@@ -37,7 +37,7 @@ type Config struct {
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	cfg.AWSStorageConfig.RegisterFlags(f)
 	cfg.GCPStorageConfig.RegisterFlags(f)
-	cfg.GCSConfig.RegisterFlags(f)
+	cfg.GCSConfig.RegisterFlagsWithPrefix("", f)
 	cfg.CassandraStorageConfig.RegisterFlags(f)
 	cfg.BoltDBConfig.RegisterFlags(f)
 	cfg.FSConfig.RegisterFlags(f)

@@ -151,8 +151,8 @@ func (d DB) SetConfig(userID string, cfg configs.Config) error {
 	}
 
 	_, err = d.Insert("configs").
-		Columns("owner_id", "owner_type", "subsystem", "config").
-		Values(userID, entityType, subsystem, cfgBytes).
+		Columns("owner_id", "owner_type", "subsystem", "updated_at", "config").
+		Values(userID, entityType, subsystem, time.Now(), cfgBytes).
 		Exec()
 	return err
 }
@@ -163,10 +163,10 @@ func (d DB) GetAllConfigs() (map[string]configs.View, error) {
 }
 
 // GetConfigs gets all of the configs that have changed recently.
-func (d DB) GetConfigs(since configs.ID) (map[string]configs.View, error) {
+func (d DB) GetConfigs(since time.Time) (map[string]configs.View, error) {
 	return d.findConfigs(squirrel.And{
 		allConfigs,
-		squirrel.Gt{"id": since},
+		squirrel.Gt{"updated_at": since},
 	})
 }
 
@@ -265,10 +265,10 @@ func (d DB) GetAllRulesConfigs() (map[string]configs.VersionedRulesConfig, error
 }
 
 // GetRulesConfigs gets all the alertmanager configs that have changed since a given config.
-func (d DB) GetRulesConfigs(since configs.ID) (map[string]configs.VersionedRulesConfig, error) {
+func (d DB) GetRulesConfigs(since time.Time) (map[string]configs.VersionedRulesConfig, error) {
 	return d.findRulesConfigs(squirrel.And{
 		allConfigs,
-		squirrel.Gt{"id": since},
+		squirrel.Gt{"updated_at": since},
 	})
 }
 
@@ -281,8 +281,8 @@ func (d DB) SetDeletedAtConfig(userID string, deletedAt pq.NullTime, cfg configs
 		return err
 	}
 	_, err = d.Insert("configs").
-		Columns("owner_id", "owner_type", "subsystem", "deleted_at", "config").
-		Values(userID, entityType, subsystem, deletedAt, cfgBytes).
+		Columns("owner_id", "owner_type", "subsystem", "updated_at", "deleted_at", "config").
+		Values(userID, entityType, subsystem, time.Now(), deletedAt, cfgBytes).
 		Exec()
 	return err
 }

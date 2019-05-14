@@ -66,7 +66,7 @@ type workItem struct {
 	hash       uint32
 	group      *group
 	scheduled  time.Time
-	generation configs.ID // a monotonically increasing number used to spot out of date work items
+	generation int64 // timestamp of when the workItem was last updated
 }
 
 // Key implements ScheduledItem
@@ -90,7 +90,7 @@ func (w workItem) String() string {
 
 type userConfig struct {
 	rules      map[string][]rules.Rule
-	generation configs.ID // a monotonically increasing number used to spot out of date work items
+	generation int64
 }
 
 type groupFactory func(userID string, groupName string, rls []rules.Rule) (*group, error)
@@ -249,8 +249,7 @@ func (s *scheduler) addUserConfig(now time.Time, hasher hash.Hash64, userID stri
 		s.Unlock()
 		return
 	}
-	generation := config.ID
-	s.cfgs[userID] = userConfig{rules: rulesByGroup, generation: generation}
+	s.cfgs[userID] = userConfig{rules: rulesByGroup, generation: now.Unix()}
 	s.Unlock()
 
 	ringHasher := fnv.New32a()
@@ -269,7 +268,7 @@ func (s *scheduler) addUserConfig(now time.Time, hasher hash.Hash64, userID stri
 		ringHasher.Reset()
 		ringHasher.Write([]byte(userID + ":" + group))
 		hash := ringHasher.Sum32()
-		workItems = append(workItems, workItem{userID, group, hash, g, evalTime, generation})
+		workItems = append(workItems, workItem{userID, group, hash, g, evalTime, now.Unix()})
 	}
 	for _, i := range workItems {
 		totalRuleGroups.Inc()

@@ -80,7 +80,7 @@ func TestSchedulerRulesOverlap(t *testing.T) {
 	ruleSets := map[string][]rules.Rule{}
 	ruleSets[groupName] = ruleSet
 
-	cfg := userConfig{generation: 1, rules: ruleSets}
+	cfg := userConfig{generation: next.Unix(), rules: ruleSets}
 	s.cfgs[userID] = cfg
 	w1 := workItem{userID: userID, groupName: groupName, scheduled: next, generation: cfg.generation}
 	s.workItemDone(w1)

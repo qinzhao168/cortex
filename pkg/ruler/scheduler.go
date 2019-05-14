@@ -249,6 +249,7 @@ func (s *scheduler) addUserConfig(now time.Time, hasher hash.Hash64, userID stri
 		s.Unlock()
 		return
 	}
+	generation := config.ID
 	s.cfgs[userID] = userConfig{rules: rulesByGroup, generation: generation}
 	s.Unlock()
 

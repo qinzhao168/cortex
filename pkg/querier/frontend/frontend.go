@@ -236,6 +236,11 @@ func (f *Frontend) RoundTripGRPC(ctx context.Context, req *ProcessRequest) (*Pro
 			}
 		}
 
+		// Don't retry if the client has gone away.
+		if ctxErr := request.originalCtx.Err(); ctxErr != nil {
+			return nil, httpgrpc.Errorf(http.StatusRequestTimeout, "Query failed due to context error: %v", ctxErr)
+		}
+
 		// Retry is we get a HTTP 500.
 		if resp != nil && resp.HttpResponse.Code/100 == 5 {
 			level.Error(f.log).Log("msg", "error processing request", "try", tries, "resp", resp.HttpResponse)

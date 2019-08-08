@@ -139,7 +139,7 @@ type Config struct {
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	cfg.BillingConfig.RegisterFlags(f)
 	cfg.PoolConfig.RegisterFlags(f)
-	cfg.HATrackerConfig.RegisterFlags("distributor", f)
+	cfg.HATrackerConfig.RegisterFlags(f)
 
 	f.BoolVar(&cfg.EnableBilling, "distributor.enable-billing", false, "Report number of ingested samples to billing system.")
 	f.DurationVar(&cfg.RemoteTimeout, "distributor.remote-timeout", 2*time.Second, "Timeout for downstream ingesters.")
@@ -168,6 +168,11 @@ func New(cfg Config, clientConfig ingester_client.Config, limits *validation.Ove
 	replicationFactor.Set(float64(ring.ReplicationFactor()))
 	cfg.PoolConfig.RemoteTimeout = cfg.RemoteTimeout
 
+	replicas, err := newClusterTracker(cfg.HATrackerConfig)
+	if err != nil {
+		return nil, err
+	}
+
 	d := &Distributor{
 		cfg:            cfg,
 		ring:           ring,
@@ -176,11 +181,6 @@ func New(cfg Config, clientConfig ingester_client.Config, limits *validation.Ove
 		limits:         limits,
 		ingestLimiters: map[string]*rate.Limiter{},
 		quit:           make(chan struct{}),
-	}
-
-	replicas, err := newClusterTracker(cfg.HATrackerConfig)
-	if err != nil {
-		return nil, err
 	}
 	d.Replicas = replicas
 

@@ -58,7 +58,7 @@ func (am *MultitenantAlertmanager) getUserConfig(w http.ResponseWriter, r *http.
 	}
 
 	if cfg == nil {
-		http.Error(w, err.Error(), http.StatusNotFound)
+		http.Error(w, "404 page not found", http.StatusNotFound)
 		return
 	}
 

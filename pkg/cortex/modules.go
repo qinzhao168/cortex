@@ -372,6 +372,7 @@ func (t *Cortex) initRuler(cfg *Config) (err error) {
 		return
 	}
 
+	t.ruler.RegisterRoutes(t.server.HTTP)
 	t.server.HTTP.Handle("/ruler_ring", t.ruler)
 	return
 }

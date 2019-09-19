@@ -4,11 +4,13 @@ import (
 	"context"
 	"sync"
 
+	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/storage"
 	"github.com/weaveworks/common/user"
 
 	"github.com/cortexproject/cortex/pkg/ingester/client"
+	"github.com/cortexproject/cortex/pkg/util"
 )
 
 // Pusher is an ingester server that accepts pushes.
@@ -56,6 +58,9 @@ func (a *appendableAppender) Commit() error {
 	a.Lock()
 	defer a.Unlock()
 	_, err := a.pusher.Push(user.InjectOrgID(context.Background(), a.userID), client.ToWriteRequest(a.labels, a.samples, client.RULE))
+	if err != nil {
+		level.Warn(util.Logger).Log("msg", "error committing evaluated rule samples", "err", err)
+	}
 	a.labels = nil
 	a.samples = nil
 	return err

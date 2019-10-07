@@ -158,7 +158,7 @@ func New(cfg *Config) (*Alertmanager, error) {
 	router := route.New().WithPrefix(am.cfg.ExternalURL.Path)
 
 	ui.Register(router, webReload, log.With(am.logger, "component", "ui"))
-	am.mux = am.api.Register(router, "/api/prom")
+	am.mux = am.api.Register(router, am.cfg.ExternalURL.Path)
 
 	return am, nil
 }

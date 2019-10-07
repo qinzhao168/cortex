@@ -409,6 +409,9 @@ func (t *Cortex) initAlertmanager(cfg *Config) (err error) {
 	// TODO this clashed with the queirer and the distributor, so we cannot
 	// run them in the same process.
 	t.server.HTTP.PathPrefix("/api/prom").Handler(middleware.AuthenticateUser.Wrap(t.alertmanager))
+
+	// It would make sense to use alertmanager as a path prefix for alertmanager endpoints
+	t.server.HTTP.PathPrefix("/alertmanager").Handler(middleware.AuthenticateUser.Wrap(t.alertmanager))
 	return
 }
 

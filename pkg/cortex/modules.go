@@ -11,6 +11,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/route"
 	"github.com/prometheus/prometheus/config"
+	"github.com/prometheus/prometheus/promql"
 	v1 "github.com/prometheus/prometheus/web/api/v1"
 	httpgrpc_server "github.com/weaveworks/common/httpgrpc/server"
 	"github.com/weaveworks/common/middleware"
@@ -27,6 +28,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/ingester"
 	"github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/querier"
+	"github.com/cortexproject/cortex/pkg/querier/chunkstore"
 	"github.com/cortexproject/cortex/pkg/querier/frontend"
 	"github.com/cortexproject/cortex/pkg/querier/queryrange"
 	"github.com/cortexproject/cortex/pkg/ring"
@@ -194,7 +196,7 @@ func (t *Cortex) initQuerier(cfg *Config) (err error) {
 		return
 	}
 
-	var store querier.ChunkStore
+	var store chunkstore.ChunkStore
 
 	if cfg.Storage.Engine == storage.StorageEngineTSDB {
 		store, err = querier.NewBlockQuerier(cfg.TSDB, prometheus.DefaultRegisterer)
@@ -283,11 +285,30 @@ func (t *Cortex) stopStore() error {
 }
 
 func (t *Cortex) initQueryFrontend(cfg *Config) (err error) {
+	err = cfg.Schema.Load()
+	if err != nil {
+		return
+	}
+
 	t.frontend, err = frontend.New(cfg.Frontend, util.Logger)
 	if err != nil {
 		return
 	}
-	tripperware, err := queryrange.NewTripperware(cfg.QueryRange, util.Logger, t.overrides, queryrange.PrometheusCodec, queryrange.PrometheusResponseExtractor)
+	tripperware, err := queryrange.NewTripperware(
+		cfg.QueryRange,
+		util.Logger,
+		t.overrides,
+		queryrange.PrometheusCodec,
+		queryrange.PrometheusResponseExtractor,
+		cfg.Schema,
+		promql.EngineOpts{
+			Logger:        util.Logger,
+			Reg:           prometheus.DefaultRegisterer,
+			MaxConcurrent: cfg.Querier.MaxConcurrent,
+			MaxSamples:    cfg.Querier.MaxSamples,
+			Timeout:       cfg.Querier.Timeout,
+		},
+	)
 	if err != nil {
 		return err
 	}

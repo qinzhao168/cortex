@@ -192,13 +192,27 @@ func (cfg *SchemaConfig) loadFromFile() error {
 // Validate the schema config and returns an error if the validation
 // doesn't pass
 func (cfg *SchemaConfig) Validate() error {
-	for _, periodCfg := range cfg.Configs {
+	for i, periodCfg := range cfg.Configs {
 		if err := periodCfg.validate(); err != nil {
 			return err
 		}
-	}
 
+		// apply default row shards
+		if periodCfg.RowShards == 0 {
+			periodCfg.RowShards = defaultRowShards(periodCfg.Schema)
+			cfg.Configs[i] = periodCfg
+		}
+	}
 	return nil
+}
+
+func defaultRowShards(schema string) uint32 {
+	switch schema {
+	case "v1", "v2", "v3", "v4", "v5", "v6", "v9":
+		return 0
+	default:
+		return 16
+	}
 }
 
 // ForEachAfter will call f() on every entry after t, splitting
@@ -219,7 +233,7 @@ func (cfg *SchemaConfig) ForEachAfter(t model.Time, f func(config *PeriodConfig)
 
 // CreateSchema returns the schema defined by the PeriodConfig
 func (cfg PeriodConfig) CreateSchema() Schema {
-	rowShards := uint32(16)
+	rowShards := defaultRowShards(cfg.Schema)
 	if cfg.RowShards > 0 {
 		rowShards = cfg.RowShards
 	}

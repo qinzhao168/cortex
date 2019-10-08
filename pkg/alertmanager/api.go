@@ -23,9 +23,9 @@ func (am *MultitenantAlertmanager) RegisterRoutes(r *mux.Router) {
 		name, method, path string
 		handler            http.HandlerFunc
 	}{
-		{"get_config", "GET", "/api/prom/alerts", am.getUserConfig},
-		{"set_config", "POST", "/api/prom/alerts", am.setUserConfig},
-		{"delete_config", "DELETE", "/api/prom/alerts", am.deleteUserConfig},
+		{"get_config", "GET", "/alertmanager/alerts", am.getUserConfig},
+		{"set_config", "POST", "/alertmanager/alerts", am.setUserConfig},
+		{"delete_config", "DELETE", "/alertmanager/alerts", am.deleteUserConfig},
 	} {
 		r.Handle(route.path, route.handler).Methods(route.method).Name(route.name)
 	}

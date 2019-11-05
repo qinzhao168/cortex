@@ -8,13 +8,13 @@ import (
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/chunk/encoding"
 	"github.com/cortexproject/cortex/pkg/ingester/client"
+	"github.com/cortexproject/cortex/pkg/storage/tsdb"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/tsdb/chunkenc"
-	"github.com/thanos-io/thanos/pkg/objstore/s3"
 	"github.com/thanos-io/thanos/pkg/runutil"
 	"github.com/thanos-io/thanos/pkg/store/storepb"
 	"google.golang.org/grpc/metadata"
@@ -26,9 +26,8 @@ type BlockQuerier struct {
 	us        *UserStore
 }
 
-// NewBlockQuerier returns a client to query a s3 block store
-func NewBlockQuerier(s3cfg s3.Config, baseDir string, r prometheus.Registerer) (*BlockQuerier, error) {
-
+// NewBlockQuerier returns a client to query a block store
+func NewBlockQuerier(cfg tsdb.Config, r prometheus.Registerer) (*BlockQuerier, error) {
 	b := &BlockQuerier{
 		syncTimes: prometheus.NewHistogram(prometheus.HistogramOpts{
 			Name:    "cortex_querier_sync_seconds",
@@ -39,7 +38,7 @@ func NewBlockQuerier(s3cfg s3.Config, baseDir string, r prometheus.Registerer) (
 
 	r.MustRegister(b.syncTimes)
 
-	us, err := NewUserStore(util.Logger, s3cfg, baseDir)
+	us, err := NewUserStore(cfg, util.Logger)
 	if err != nil {
 		return nil, err
 	}
@@ -90,9 +89,10 @@ func (b *BlockQuerier) Get(ctx context.Context, userID string, from, through mod
 
 	ctx = metadata.AppendToOutgoingContext(ctx, "user", userID)
 	seriesClient, err := client.Series(ctx, &storepb.SeriesRequest{
-		MinTime:  int64(from),
-		MaxTime:  int64(through),
-		Matchers: converted,
+		MinTime:                 int64(from),
+		MaxTime:                 int64(through),
+		Matchers:                converted,
+		PartialResponseStrategy: storepb.PartialResponseStrategy_ABORT,
 	})
 	if err != nil {
 		return nil, err
@@ -115,16 +115,21 @@ func (b *BlockQuerier) Get(ctx context.Context, userID string, from, through mod
 }
 
 func seriesToChunks(userID string, series *storepb.Series) []chunk.Chunk {
-
 	var lbls labels.Labels
-	for i := range series.Labels {
+	for _, label := range series.Labels {
+		// We have to remove the external label set by the shipper
+		if label.Name == tsdb.TenantIDExternalLabel {
+			continue
+		}
+
 		lbls = append(lbls, labels.Label{
-			Name:  series.Labels[i].Name,
-			Value: series.Labels[i].Value,
+			Name:  label.Name,
+			Value: label.Value,
 		})
 	}
 
-	var chunks []chunk.Chunk
+	chunks := make([]chunk.Chunk, 0, len(series.Chunks))
+
 	for _, c := range series.Chunks {
 		ch := encoding.New()
 

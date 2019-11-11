@@ -91,7 +91,7 @@ func TestIngesterRestart(t *testing.T) {
 }
 
 func TestIngesterTransfer(t *testing.T) {
-	limits, err := validation.NewOverrides(defaultLimitsTestConfig())
+	limits, err := validation.NewOverrides(defaultLimitsTestConfig(), nil)
 	require.NoError(t, err)
 
 	// Start the first ingester, and get it into ACTIVE state.
@@ -178,7 +178,7 @@ func TestIngesterTransfer(t *testing.T) {
 }
 
 func TestIngesterBadTransfer(t *testing.T) {
-	limits, err := validation.NewOverrides(defaultLimitsTestConfig())
+	limits, err := validation.NewOverrides(defaultLimitsTestConfig(), nil)
 	require.NoError(t, err)
 
 	// Start ingester in PENDING.
@@ -416,7 +416,7 @@ func TestIngesterFlush(t *testing.T) {
 }
 
 func TestV2IngesterTransfer(t *testing.T) {
-	limits, err := validation.NewOverrides(defaultLimitsTestConfig())
+	limits, err := validation.NewOverrides(defaultLimitsTestConfig(), nil)
 	require.NoError(t, err)
 
 	dir1, err := ioutil.TempDir("", "tsdb")

@@ -266,6 +266,9 @@ func (i *Ingester) getOrCreateTSDB(userID string) (*tsdb.DB, error) {
 				RetentionDuration: uint64(i.cfg.TSDBConfig.Retention / time.Millisecond),
 				BlockRanges:       []int64{int64(i.cfg.TSDBConfig.BlockRanges / time.Millisecond)},
 				NoLockfile:        true,
+				// TODO(pracucci): need to test a possible bug occurring on transfer when there are checkpoint,
+				//                 so I'm lowering the segment size to have more frequent checkpoints
+				WALSegmentSize: 5 * 1024 * 1024, // 5 MB
 			})
 			if err != nil {
 				return nil, err

@@ -3,8 +3,8 @@ package tsdb
 import (
 	"errors"
 	"flag"
-	"strings"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/cortexproject/cortex/pkg/storage/tsdb/backend/gcs"

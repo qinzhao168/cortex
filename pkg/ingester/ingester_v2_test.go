@@ -72,6 +72,26 @@ func TestIngester_v2LabelNames_ShouldNotCreateTSDBIfDoesNotExist(t *testing.T) {
 	assert.False(t, tsdbCreated)
 }
 
+func TestIngester_v2Push_ShouldNotCreateTSDBIfNotInActiveState(t *testing.T) {
+	i, err := newIngesterMockWithTSDBStorage()
+	require.NoError(t, err)
+	defer i.Shutdown()
+	require.Equal(t, ring.PENDING, i.lifecycler.GetState())
+
+	// Mock request
+	userID := "test"
+	ctx := user.InjectOrgID(context.Background(), userID)
+	req := &client.WriteRequest{}
+
+	res, err := i.v2Push(ctx, req)
+	assert.Equal(t, fmt.Errorf(errTSDBCreateIncompatibleState, "PENDING"), err)
+	assert.Nil(t, res)
+
+	// Check if the TSDB has been created
+	_, tsdbCreated := i.TSDBState.dbs[userID]
+	assert.False(t, tsdbCreated)
+}
+
 func TestIngester_getOrCreateTSDB_ShouldNotAllowToCreateTSDBIfIngesterStateIsNotActive(t *testing.T) {
 	tests := map[string]struct {
 		state       ring.IngesterState
@@ -120,7 +140,7 @@ func TestIngester_getOrCreateTSDB_ShouldNotAllowToCreateTSDBIfIngesterStateIsNot
 				}
 			}
 
-			db, err := i.getOrCreateTSDB("test")
+			db, err := i.getOrCreateTSDB("test", false)
 			assert.Equal(t, testData.expectedErr, err)
 
 			if testData.expectedErr != nil {

@@ -478,3 +478,26 @@ func TestV2IngesterTransfer(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, expectedResponse, response)
 }
+
+func mockWriteRequest(lbls labels.Labels, value float64, timestampMs int64) (*client.WriteRequest, *client.QueryResponse) {
+	samples := []client.Sample{
+		{
+			TimestampMs: timestampMs,
+			Value:       value,
+		},
+	}
+
+	req := client.ToWriteRequest([]labels.Labels{lbls}, samples, client.API)
+
+	// Generate the expected response
+	expectedResponse := &client.QueryResponse{
+		Timeseries: []client.TimeSeries{
+			{
+				Labels:  client.FromLabelsToLabelAdapters(lbls),
+				Samples: samples,
+			},
+		},
+	}
+
+	return req, expectedResponse
+}

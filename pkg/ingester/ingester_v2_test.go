@@ -5,6 +5,7 @@ import (
 	"io/ioutil"
 	"os"
 	"testing"
+	"time"
 
 	"github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/ring"
@@ -16,7 +17,7 @@ import (
 )
 
 func TestIngester_v2Query_ShouldNotCreateTSDBIfDoesNotExist(t *testing.T) {
-	i, err := newIngesterMockWithTSDBStorage()
+	i, err := newIngesterMockWithTSDBStorage(defaultIngesterTestConfig())
 	require.NoError(t, err)
 	defer i.Shutdown()
 
@@ -35,7 +36,7 @@ func TestIngester_v2Query_ShouldNotCreateTSDBIfDoesNotExist(t *testing.T) {
 }
 
 func TestIngester_v2LabelValues_ShouldNotCreateTSDBIfDoesNotExist(t *testing.T) {
-	i, err := newIngesterMockWithTSDBStorage()
+	i, err := newIngesterMockWithTSDBStorage(defaultIngesterTestConfig())
 	require.NoError(t, err)
 	defer i.Shutdown()
 
@@ -54,7 +55,7 @@ func TestIngester_v2LabelValues_ShouldNotCreateTSDBIfDoesNotExist(t *testing.T) 
 }
 
 func TestIngester_v2LabelNames_ShouldNotCreateTSDBIfDoesNotExist(t *testing.T) {
-	i, err := newIngesterMockWithTSDBStorage()
+	i, err := newIngesterMockWithTSDBStorage(defaultIngesterTestConfig())
 	require.NoError(t, err)
 	defer i.Shutdown()
 
@@ -73,7 +74,7 @@ func TestIngester_v2LabelNames_ShouldNotCreateTSDBIfDoesNotExist(t *testing.T) {
 }
 
 func TestIngester_v2Push_ShouldNotCreateTSDBIfNotInActiveState(t *testing.T) {
-	i, err := newIngesterMockWithTSDBStorage()
+	i, err := newIngesterMockWithTSDBStorage(defaultIngesterTestConfig())
 	require.NoError(t, err)
 	defer i.Shutdown()
 	require.Equal(t, ring.PENDING, i.lifecycler.GetState())
@@ -119,7 +120,10 @@ func TestIngester_getOrCreateTSDB_ShouldNotAllowToCreateTSDBIfIngesterStateIsNot
 		testData := testData
 
 		t.Run(testName, func(t *testing.T) {
-			i, err := newIngesterMockWithTSDBStorage()
+			cfg := defaultIngesterTestConfig()
+			cfg.LifecyclerConfig.JoinAfter = 60 * time.Second
+
+			i, err := newIngesterMockWithTSDBStorage(cfg)
 			require.NoError(t, err)
 			defer i.Shutdown()
 			defer os.RemoveAll(i.cfg.TSDBConfig.Dir)
@@ -152,8 +156,7 @@ func TestIngester_getOrCreateTSDB_ShouldNotAllowToCreateTSDBIfIngesterStateIsNot
 	}
 }
 
-func newIngesterMockWithTSDBStorage() (*Ingester, error) {
-	ingesterCfg := defaultIngesterTestConfig()
+func newIngesterMockWithTSDBStorage(ingesterCfg Config) (*Ingester, error) {
 	clientCfg := defaultClientTestConfig()
 	limits := defaultLimitsTestConfig()
 

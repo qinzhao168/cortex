@@ -1,0 +1,6 @@
+baseURL = "https://cortexmetrics.io"
+languageCode = "en-us"
+title = "Cortex: A horizontally scalable, highly available, multi-tenant, long term Prometheus."
+theme = "book"
+canonifyURLs = true
+relativeURL = true

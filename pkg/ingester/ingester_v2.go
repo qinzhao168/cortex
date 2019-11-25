@@ -111,6 +111,12 @@ func (i *Ingester) v2Push(ctx old_ctx.Context, req *client.WriteRequest) (*clien
 
 		for _, s := range ts.Samples {
 			if _, err := app.Add(lset, s.TimestampMs, s.Value); err != nil {
+				// TODO hack
+				if err == tsdb.ErrOutOfBounds || err == tsdb.ErrOutOfOrderSample {
+					level.Warn(util.Logger).Log("msg", "error while adding sample to TSDB", "err", err, "userID", userID, "labelset", lset.String(), "timestamp_ms", s.TimestampMs, "value", s.Value)
+					continue
+				}
+
 				if err := app.Rollback(); err != nil {
 					level.Warn(util.Logger).Log("failed to rollback on error", "userID", userID, "err", err)
 				}

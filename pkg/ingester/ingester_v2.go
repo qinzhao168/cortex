@@ -109,7 +109,7 @@ func (i *Ingester) v2Push(ctx old_ctx.Context, req *client.WriteRequest) (*clien
 		for _, s := range ts.Samples {
 			if _, err := app.Add(lset, s.TimestampMs, s.Value); err != nil {
 				if err := app.Rollback(); err != nil {
-					level.Warn(util.Logger).Log("failed to rollback on error", "userID", userID, "err", err)
+					level.Warn(util.Logger).Log("msg", "failed to rollback on error", "userID", userID, "err", err)
 				}
 				return nil, err
 			}

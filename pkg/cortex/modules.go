@@ -31,7 +31,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/ruler"
 	"github.com/cortexproject/cortex/pkg/util"
-	"github.com/cortexproject/cortex/pkg/util/runtime_config"
+	"github.com/cortexproject/cortex/pkg/util/runtimeconfig"
 	"github.com/cortexproject/cortex/pkg/util/validation"
 )
 
@@ -172,7 +172,7 @@ func (t *Cortex) initRuntimeConfig(cfg *Config) (err error) {
 	}
 	cfg.RuntimeConfig.Loader = loadRuntimeConfig
 
-	t.runtimeConfig, err = runtime_config.NewRuntimeConfigManager(cfg.RuntimeConfig)
+	t.runtimeConfig, err = runtimeconfig.NewRuntimeConfigManager(cfg.RuntimeConfig)
 	return err
 }
 

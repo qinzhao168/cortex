@@ -564,11 +564,12 @@ func (i *Lifecycler) autoJoin(ctx context.Context, targetState IngesterState) er
 
 		newTokens := GenerateTokens(i.cfg.NumTokens-len(myTokens), takenTokens)
 		i.setState(targetState)
-		ringDesc.AddIngester(i.ID, i.Addr, newTokens, i.GetState())
 
 		tokens := append(myTokens, newTokens...)
 		sort.Sort(sortableUint32(tokens))
 		i.setTokens(tokens)
+
+		ringDesc.AddIngester(i.ID, i.Addr, i.getTokens(), i.GetState())
 
 		return ringDesc, true, nil
 	})

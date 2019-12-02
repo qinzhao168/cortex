@@ -3,7 +3,7 @@
 ## master / unreleased
 
 * [BUGFIX] Fixed unnecessary CAS operations done by the HA tracker when the jitter is enabled. #1861
-* [CHANGE] Ingesters now write only normalised tokens to the ring, although they can still read denormalised tokens used by other ingesters. `-ingester.normalise-tokens` is now deprecated, and ignored.
+* [CHANGE] Ingesters now write only normalised tokens to the ring, although they can still read denormalised tokens used by other ingesters. `-ingester.normalise-tokens` is now deprecated, and ignored. #1809
 
 ## 0.4.0 / 2019-12-02
 

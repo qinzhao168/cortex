@@ -3,6 +3,7 @@ package tsdb
 import (
 	"errors"
 	"flag"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -89,4 +90,10 @@ func (cfg *Config) Validate() error {
 	}
 
 	return nil
+}
+
+// BlocksDir returns the directory path where TSDB blocks and wal should be
+// stored by the ingester
+func (cfg *Config) BlocksDir(userID string) string {
+	return filepath.Join(cfg.Dir, userID)
 }

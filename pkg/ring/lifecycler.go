@@ -50,7 +50,7 @@ type LifecyclerConfig struct {
 	JoinAfter        time.Duration `yaml:"join_after,omitempty"`
 	MinReadyDuration time.Duration `yaml:"min_ready_duration,omitempty"`
 	UnusedFlag       bool          `yaml:"claim_on_rollout,omitempty"` // DEPRECATED - left for backwards-compatibility
-	NormaliseTokens  bool          `yaml:"normalise_tokens,omitempty"`
+	UnusedFlag2      bool          `yaml:"normalise_tokens,omitempty"` // DEPRECATED - left for backwards-compatibility
 	InfNames         []string      `yaml:"interface_names"`
 	FinalSleep       time.Duration `yaml:"final_sleep"`
 
@@ -82,7 +82,7 @@ func (cfg *LifecyclerConfig) RegisterFlagsWithPrefix(prefix string, f *flag.Flag
 	f.DurationVar(&cfg.ObservePeriod, prefix+"observe-period", 0*time.Second, "Observe tokens after generating to resolve collisions. Useful when using gossiping ring.")
 	f.DurationVar(&cfg.MinReadyDuration, prefix+"min-ready-duration", 1*time.Minute, "Minimum duration to wait before becoming ready. This is to work around race conditions with ingesters exiting and updating the ring.")
 	flagext.DeprecatedFlag(f, prefix+"claim-on-rollout", "DEPRECATED. This feature is no longer optional.")
-	f.BoolVar(&cfg.NormaliseTokens, prefix+"normalise-tokens", false, "Store tokens in a normalised fashion to reduce allocations.")
+	flagext.DeprecatedFlag(f, prefix+"normalise-tokens", "DEPRECATED. This feature is no longer optional.")
 	f.DurationVar(&cfg.FinalSleep, prefix+"final-sleep", 30*time.Second, "Duration to sleep for before exiting, to ensure metrics are scraped.")
 
 	hostname, err := os.Hostname()
@@ -278,7 +278,7 @@ func (i *Lifecycler) ClaimTokensFor(ctx context.Context, ingesterID string) erro
 				return nil, false, fmt.Errorf("Cannot claim tokens in an empty ring")
 			}
 
-			tokens = ringDesc.ClaimTokens(ingesterID, i.ID, i.cfg.NormaliseTokens)
+			tokens = ringDesc.ClaimTokens(ingesterID, i.ID)
 			// update timestamp to give gossiping client a chance register ring change.
 			ing := ringDesc.Ingesters[i.ID]
 			ing.Timestamp = time.Now().Unix()
@@ -458,7 +458,7 @@ func (i *Lifecycler) initRing(ctx context.Context) error {
 		if !ok {
 			// Either we are a new ingester, or consul must have restarted
 			level.Info(util.Logger).Log("msg", "entry not found in ring, adding with no tokens")
-			ringDesc.AddIngester(i.ID, i.Addr, []uint32{}, i.GetState(), i.cfg.NormaliseTokens)
+			ringDesc.AddIngester(i.ID, i.Addr, []uint32{}, i.GetState())
 			return ringDesc, true, nil
 		}
 
@@ -507,7 +507,7 @@ func (i *Lifecycler) verifyTokens(ctx context.Context) bool {
 			ringTokens = append(ringTokens, newTokens...)
 			sort.Sort(sortableUint32(ringTokens))
 
-			ringDesc.AddIngester(i.ID, i.Addr, ringTokens, i.GetState(), i.cfg.NormaliseTokens)
+			ringDesc.AddIngester(i.ID, i.Addr, ringTokens, i.GetState())
 
 			i.setTokens(ringTokens)
 
@@ -564,11 +564,12 @@ func (i *Lifecycler) autoJoin(ctx context.Context, targetState IngesterState) er
 
 		newTokens := GenerateTokens(i.cfg.NumTokens-len(myTokens), takenTokens)
 		i.setState(targetState)
-		ringDesc.AddIngester(i.ID, i.Addr, newTokens, i.GetState(), i.cfg.NormaliseTokens)
 
 		tokens := append(myTokens, newTokens...)
 		sort.Sort(sortableUint32(tokens))
 		i.setTokens(tokens)
+
+		ringDesc.AddIngester(i.ID, i.Addr, i.getTokens(), i.GetState())
 
 		return ringDesc, true, nil
 	})
@@ -597,7 +598,7 @@ func (i *Lifecycler) updateConsul(ctx context.Context) error {
 		if !ok {
 			// consul must have restarted
 			level.Info(util.Logger).Log("msg", "found empty ring, inserting tokens")
-			ringDesc.AddIngester(i.ID, i.Addr, i.getTokens(), i.GetState(), i.cfg.NormaliseTokens)
+			ringDesc.AddIngester(i.ID, i.Addr, i.getTokens(), i.GetState())
 		} else {
 			ingesterDesc.Timestamp = time.Now().Unix()
 			ingesterDesc.State = i.GetState()

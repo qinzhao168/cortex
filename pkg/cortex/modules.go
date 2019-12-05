@@ -2,6 +2,7 @@ package cortex
 
 import (
 	"fmt"
+	"math"
 	"net/http"
 	"os"
 	"regexp"
@@ -304,7 +305,7 @@ func (t *Cortex) initQueryFrontend(cfg *Config) (err error) {
 		promql.EngineOpts{
 			Logger:        util.Logger,
 			Reg:           prometheus.DefaultRegisterer,
-			MaxConcurrent: cfg.Querier.MaxConcurrent,
+			MaxConcurrent: int(math.MaxInt64), // the frontend's promql engine should not set any concurrency controls (these are handled by middleware)
 			MaxSamples:    cfg.Querier.MaxSamples,
 			Timeout:       cfg.Querier.Timeout,
 		},

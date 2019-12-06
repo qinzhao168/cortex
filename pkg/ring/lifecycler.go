@@ -483,7 +483,7 @@ func (i *Lifecycler) initRing(ctx context.Context) error {
 				if len(tokensFromFile) >= i.cfg.NumTokens {
 					i.setState(ACTIVE)
 				}
-				ringDesc.AddIngester(i.ID, i.Addr, tokensFromFile, i.GetState(), i.cfg.NormaliseTokens)
+				ringDesc.AddIngester(i.ID, i.Addr, tokensFromFile, i.GetState())
 				i.setTokens(tokensFromFile)
 				return ringDesc, true, nil
 			}

@@ -357,6 +357,9 @@ func (d *Distributor) Push(ctx context.Context, req *client.WriteRequest) (*clie
 				// These samples have been deduped.
 				dedupedSamples.WithLabelValues(userID, cluster).Add(float64(numSamples))
 			}
+
+			client.ReuseSlice(req.Timeseries)
+
 			return nil, err
 		}
 		// If there wasn't an error but removeReplica is false that means we didn't find both HA labels.

@@ -571,7 +571,7 @@ func prepare(t *testing.T, numIngesters, happyIngesters int, queryDelay time.Dur
 	cfg.ShardByAllLabels = shardByAllLabels
 	cfg.ExtraQueryDelay = 50 * time.Millisecond
 
-	overrides, err := validation.NewOverrides(*limits)
+	overrides, err := validation.NewOverrides(*limits, nil)
 	require.NoError(t, err)
 
 	d, err := New(cfg, clientConfig, overrides, ring)

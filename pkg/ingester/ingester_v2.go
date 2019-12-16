@@ -2,7 +2,10 @@ package ingester
 
 import (
 	"fmt"
+	"io"
 	"net/http"
+	"os"
+	"path/filepath"
 	"sync"
 	"time"
 
@@ -13,6 +16,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/util/validation"
 	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/prometheus/pkg/gate"
 	"github.com/prometheus/prometheus/tsdb"
 	lbls "github.com/prometheus/prometheus/tsdb/labels"
 	"github.com/thanos-io/thanos/pkg/block/metadata"
@@ -71,6 +75,11 @@ func NewV2(cfg Config, clientConfig client.Config, limits *validation.Overrides,
 	// Init the limter and instantiate the user states which depend on it
 	i.limiter = NewSeriesLimiter(limits, i.lifecycler, cfg.LifecyclerConfig.RingConfig.ReplicationFactor, cfg.ShardByAllLabels)
 	i.userStates = newUserStates(i.limiter, cfg)
+
+	// Scan and open TSDB's that already exist on disk
+	if err := i.openExistingTSDB(context.Background()); err != nil {
+		return nil, err
+	}
 
 	// Now that user states have been created, we can start the lifecycler
 	i.lifecycler.Start()
@@ -451,4 +460,64 @@ func (i *Ingester) closeAllTSDB() {
 	// Wait until all Close() completed
 	i.userStatesMtx.Unlock()
 	wg.Wait()
+}
+
+// openExistingTSDB walks the user tsdb dir, and opens a tsdb for each user. This may start a WAL replay, so we limit the number of
+// concurrently opening TSDB.
+func (i *Ingester) openExistingTSDB(ctx context.Context) error {
+	wg := &sync.WaitGroup{}
+	openGate := gate.New(i.cfg.TSDBConfig.MaxOpeningTSDBOnStartup)
+
+	err := filepath.Walk(i.cfg.TSDBConfig.Dir, func(path string, info os.FileInfo, err error) error {
+		if path == i.cfg.TSDBConfig.Dir { // Nothing to do for root
+			return nil
+		}
+
+		// Top level directories are assumed to be user TSDBs
+		if info.IsDir() {
+
+			f, err := os.Open(path)
+			if err != nil {
+				level.Error(util.Logger).Log("msg", "unable to open user TSDB dir", "err", err, "user", userID)
+				return filepath.SkipDir
+			}
+			defer f.Close()
+
+			// If the dir is empty skip it
+			if _, err := f.Readdirnames(1); err != nil {
+				if err != io.EOF {
+					level.Error(util.Logger).Log("msg", "unable to read TSDB dir", "err", err, "user", userID)
+					return filepath.SkipDir
+				}
+
+				// Empty dir
+				return filepath.SkipDir
+			}
+
+			// Limit the number of TSDB's opening concurrently
+			if err := openGate.Start(ctx); err != nil {
+				return err
+			}
+
+			userID := info.Name()
+			wg.Add(1)
+			go func(userID string) {
+				defer wg.Done()
+				defer openGate.Done()
+				_, err := i.getOrCreateTSDB(userID, true) // force create the TSDB due to the lifecycler not having started yet
+				if err != nil {
+					level.Error(util.Logger).Log("msg", "unable to open user TSDB", "err", err, "user", userID)
+				}
+			}(userID)
+
+			return filepath.SkipDir // Don't descend into directories
+		}
+
+		// Skip all other files
+		return nil
+	})
+
+	// Wait for all opening routines to finish
+	wg.Wait()
+	return err
 }

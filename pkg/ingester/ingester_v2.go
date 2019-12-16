@@ -476,6 +476,7 @@ func (i *Ingester) openExistingTSDB(ctx context.Context) error {
 		// Top level directories are assumed to be user TSDBs
 		if info.IsDir() {
 
+			userID := info.Name()
 			f, err := os.Open(path)
 			if err != nil {
 				level.Error(util.Logger).Log("msg", "unable to open user TSDB dir", "err", err, "user", userID)
@@ -499,7 +500,6 @@ func (i *Ingester) openExistingTSDB(ctx context.Context) error {
 				return err
 			}
 
-			userID := info.Name()
 			wg.Add(1)
 			go func(userID string) {
 				defer wg.Done()

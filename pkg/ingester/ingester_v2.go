@@ -465,59 +465,57 @@ func (i *Ingester) closeAllTSDB() {
 // openExistingTSDB walks the user tsdb dir, and opens a tsdb for each user. This may start a WAL replay, so we limit the number of
 // concurrently opening TSDB.
 func (i *Ingester) openExistingTSDB(ctx context.Context) error {
+	level.Info(util.Logger).Log("msg", "opening existing TSDBs")
 	wg := &sync.WaitGroup{}
-	openGate := gate.New(i.cfg.TSDBConfig.MaxOpeningTSDBOnStartup)
+	openGate := gate.New(i.cfg.TSDBConfig.MaxTSDBOpeningConcurrencyOnStartup)
 
 	err := filepath.Walk(i.cfg.TSDBConfig.Dir, func(path string, info os.FileInfo, err error) error {
-		if path == i.cfg.TSDBConfig.Dir { // Nothing to do for root
+
+		// Skip root dir and all other files
+		if path == i.cfg.TSDBConfig.Dir || !info.IsDir() {
 			return nil
 		}
 
 		// Top level directories are assumed to be user TSDBs
-		if info.IsDir() {
+		userID := info.Name()
+		f, err := os.Open(path)
+		if err != nil {
+			level.Error(util.Logger).Log("msg", "unable to open user TSDB dir", "err", err, "user", userID, "path", path)
+			return filepath.SkipDir
+		}
+		defer f.Close()
 
-			userID := info.Name()
-			f, err := os.Open(path)
-			if err != nil {
-				level.Error(util.Logger).Log("msg", "unable to open user TSDB dir", "err", err, "user", userID)
-				return filepath.SkipDir
-			}
-			defer f.Close()
-
-			// If the dir is empty skip it
-			if _, err := f.Readdirnames(1); err != nil {
-				if err != io.EOF {
-					level.Error(util.Logger).Log("msg", "unable to read TSDB dir", "err", err, "user", userID)
-					return filepath.SkipDir
-				}
-
-				// Empty dir
+		// If the dir is empty skip it
+		if _, err := f.Readdirnames(1); err != nil {
+			if err != io.EOF {
+				level.Error(util.Logger).Log("msg", "unable to read TSDB dir", "err", err, "user", userID, "path", path)
 				return filepath.SkipDir
 			}
 
-			// Limit the number of TSDB's opening concurrently
-			if err := openGate.Start(ctx); err != nil {
-				return err
-			}
-
-			wg.Add(1)
-			go func(userID string) {
-				defer wg.Done()
-				defer openGate.Done()
-				_, err := i.getOrCreateTSDB(userID, true) // force create the TSDB due to the lifecycler not having started yet
-				if err != nil {
-					level.Error(util.Logger).Log("msg", "unable to open user TSDB", "err", err, "user", userID)
-				}
-			}(userID)
-
-			return filepath.SkipDir // Don't descend into directories
+			// Empty dir
+			return filepath.SkipDir
 		}
 
-		// Skip all other files
-		return nil
+		// Limit the number of TSDB's opening concurrently. Start blocks until there's a free spot available or the context is cancelled.
+		if err := openGate.Start(ctx); err != nil {
+			return err
+		}
+
+		wg.Add(1)
+		go func(userID string) {
+			defer wg.Done()
+			defer openGate.Done()
+			_, err := i.getOrCreateTSDB(userID, true) // force create the TSDB due to the lifecycler not having started yet
+			if err != nil {
+				level.Error(util.Logger).Log("msg", "unable to open user TSDB", "err", err, "user", userID)
+			}
+		}(userID)
+
+		return filepath.SkipDir // Don't descend into directories
 	})
 
 	// Wait for all opening routines to finish
 	wg.Wait()
+	level.Info(util.Logger).Log("msg", "completed opening existing TSDBs")
 	return err
 }

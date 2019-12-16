@@ -32,8 +32,8 @@ type Config struct {
 	Backend      string            `yaml:"backend"`
 	BucketStore  BucketStoreConfig `yaml:"bucket_store"`
 
-	// MaxOpeningTSDBOnStartup limits the number of concurrently opening TSDB's during startup
-	MaxOpeningTSDBOnStartup int `yaml:"max_opening_tsdb_on_startup"`
+	// MaxTSDBOpeningConcurrencyOnStartup limits the number of concurrently opening TSDB's during startup
+	MaxTSDBOpeningConcurrencyOnStartup int `yaml:"max_tsdb_opening_concurrency_on_startup"`
 
 	// Backends
 	S3  s3.Config  `yaml:"s3"`
@@ -85,7 +85,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.DurationVar(&cfg.Retention, "experimental.tsdb.retention-period", 6*time.Hour, "TSDB block retention")
 	f.DurationVar(&cfg.ShipInterval, "experimental.tsdb.ship-interval", 30*time.Second, "the frequency at which tsdb blocks are scanned for shipping")
 	f.StringVar(&cfg.Backend, "experimental.tsdb.backend", "s3", "TSDB storage backend to use")
-	f.IntVar(&cfg.MaxOpeningTSDBOnStartup, "experimental.tsdb.max-opening-tsdb-on-startup", 10, "limit the number of concurrently opening TSDB's on startup")
+	f.IntVar(&cfg.MaxTSDBOpeningConcurrencyOnStartup, "experimental.tsdb.max-tsdb-opening-concurrency-on-startup", 10, "limit the number of concurrently opening TSDB's on startup")
 }
 
 // Validate the config

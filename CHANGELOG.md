@@ -16,6 +16,8 @@
 * [FEATURE] Added `global` ingestion rate limiter strategy. Deprecated `-distributor.limiter-reload-period` flag. #1766
 * [FEATURE] Added support for Microsoft Azure blob storage to be used for storing chunk data. #1913
 * [BUGFIX] Fixed unnecessary CAS operations done by the HA tracker when the jitter is enabled. #1861
+* [ENHANCEMENT] Experimental TSDB: Open existing TSDB on startup to prevent ingester from becoming ready before it can accept writes. #1917
+  * --experimental.tsdb.max-tsdb-opening-concurrency-on-startup
   
 ## 0.4.0 / 2019-12-02
 

@@ -388,11 +388,23 @@ func (i *Ingester) getOrCreateTSDB(userID string, force bool) (*tsdb.DB, error) 
 		return nil, fmt.Errorf(errTSDBCreateIncompatibleState, ingesterState)
 	}
 
+	// Create the database and a shipper for a user
+	db, err := i.createTSDB(userID)
+	if err != nil {
+		return nil, err
+	}
+
+	// Add the db to list of user databases
+	i.TSDBState.dbs[userID] = db
+	return db, nil
+}
+
+// createTSDB creates a TSDB for a given userID, and returns the created db.
+func (i *Ingester) createTSDB(userID string) (*tsdb.DB, error) {
 	udir := i.cfg.TSDBConfig.BlocksDir(userID)
 
 	// Create a new user database
-	var err error
-	db, err = tsdb.Open(udir, util.Logger, nil, &tsdb.Options{
+	db, err := tsdb.Open(udir, util.Logger, nil, &tsdb.Options{
 		RetentionDuration: uint64(i.cfg.TSDBConfig.Retention / time.Millisecond),
 		BlockRanges:       i.cfg.TSDBConfig.BlockRanges.ToMillisecondRanges(),
 		NoLockfile:        true,
@@ -423,8 +435,6 @@ func (i *Ingester) getOrCreateTSDB(userID string, force bool) (*tsdb.DB, error) 
 			return nil
 		})
 	}()
-
-	i.TSDBState.dbs[userID] = db
 
 	return db, nil
 }
@@ -505,10 +515,17 @@ func (i *Ingester) openExistingTSDB(ctx context.Context) error {
 		go func(userID string) {
 			defer wg.Done()
 			defer openGate.Done()
-			_, err := i.getOrCreateTSDB(userID, true) // force create the TSDB due to the lifecycler not having started yet
+			db, err := i.createTSDB(userID)
 			if err != nil {
 				level.Error(util.Logger).Log("msg", "unable to open user TSDB", "err", err, "user", userID)
+				return
 			}
+
+			// Add the database to the map of user databases
+			i.userStatesMtx.Lock()
+			defer i.userStatesMtx.Unlock()
+			i.TSDBState.dbs[userID] = db
+
 		}(userID)
 
 		return filepath.SkipDir // Don't descend into directories

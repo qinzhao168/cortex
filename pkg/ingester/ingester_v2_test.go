@@ -745,47 +745,42 @@ func newIngesterMockWithTSDBStorage(ingesterCfg Config, registerer prometheus.Re
 	return ingester, cleanup, nil
 }
 
-func TestIngester_V2Startup(t *testing.T) {
+func TestIngester_v2LoadTSDBOnStartup(t *testing.T) {
 	t.Parallel()
 
-	tests := []struct {
-		name  string
-		seed  func(string)
-		check func(*Ingester)
+	tests := map[string]struct {
+		setup func(*testing.T, string)
+		check func(*testing.T, *Ingester)
 	}{
-		{
-			name: "empty user dir",
-			seed: func(dir string) {
+		"empty user dir": {
+			setup: func(t *testing.T, dir string) {
 				require.NoError(t, os.Mkdir(filepath.Join(dir, "user0"), 0700))
 			},
-			check: func(i *Ingester) {
+			check: func(t *testing.T, i *Ingester) {
 				require.Empty(t, i.getTSDB("user0"), "tsdb created for empty user dir")
 			},
 		},
-		{
-			name: "empty tsdbs",
-			seed: func(dir string) {},
-			check: func(i *Ingester) {
+		"empty tsdbs": {
+			setup: func(t *testing.T, dir string) {},
+			check: func(t *testing.T, i *Ingester) {
 				require.Zero(t, len(i.TSDBState.dbs), "user tsdb's were created on empty dir")
 			},
 		},
-		{
-			name: "missing tsdb dir",
-			seed: func(dir string) {
+		"missing tsdb dir": {
+			setup: func(t *testing.T, dir string) {
 				require.NoError(t, os.Remove(dir))
 			},
-			check: func(i *Ingester) {
+			check: func(t *testing.T, i *Ingester) {
 				require.Zero(t, len(i.TSDBState.dbs), "user tsdb's were created on missing dir")
 			},
 		},
-		{
-			name: "populated user dirs with unpopulated",
-			seed: func(dir string) {
+		"populated user dirs with unpopulated": {
+			setup: func(t *testing.T, dir string) {
 				require.NoError(t, os.MkdirAll(filepath.Join(dir, "user0", "dummy"), 0700))
 				require.NoError(t, os.MkdirAll(filepath.Join(dir, "user1", "dummy"), 0700))
 				require.NoError(t, os.Mkdir(filepath.Join(dir, "user2"), 0700))
 			},
-			check: func(i *Ingester) {
+			check: func(t *testing.T, i *Ingester) {
 				require.NotNil(t, i.getTSDB("user0"), "tsdb not created for non-empty user dir")
 				require.NotNil(t, i.getTSDB("user1"), "tsdb not created for non-empty user dir")
 				require.Empty(t, i.getTSDB("user2"), "tsdb created for empty user dir")
@@ -793,8 +788,8 @@ func TestIngester_V2Startup(t *testing.T) {
 		},
 	}
 
-	for _, test := range tests {
-		testName := test.name
+	for name, test := range tests {
+		testName := name
 		testData := test
 		t.Run(testName, func(t *testing.T) {
 			clientCfg := defaultClientTestConfig()
@@ -806,6 +801,7 @@ func TestIngester_V2Startup(t *testing.T) {
 			// Create a temporary directory for TSDB
 			tempDir, err := ioutil.TempDir("", "tsdb")
 			require.NoError(t, err)
+			defer os.RemoveAll(tempDir)
 
 			ingesterCfg := defaultIngesterTestConfig()
 			ingesterCfg.TSDBEnabled = true
@@ -813,16 +809,15 @@ func TestIngester_V2Startup(t *testing.T) {
 			ingesterCfg.TSDBConfig.Backend = "s3"
 			ingesterCfg.TSDBConfig.S3.Endpoint = "localhost"
 
-			// Seed the tsdbs dir
-			testData.seed(tempDir)
+			// setup the tsdbs dir
+			testData.setup(t, tempDir)
 
 			ingester, err := NewV2(ingesterCfg, clientCfg, overrides, nil)
 			require.NoError(t, err)
 
 			defer ingester.Shutdown()
-			defer os.RemoveAll(tempDir)
 
-			testData.check(ingester)
+			testData.check(t, ingester)
 		})
 	}
 }

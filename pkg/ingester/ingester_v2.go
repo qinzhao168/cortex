@@ -523,8 +523,8 @@ func (i *Ingester) openExistingTSDB(ctx context.Context) error {
 
 			// Add the database to the map of user databases
 			i.userStatesMtx.Lock()
-			defer i.userStatesMtx.Unlock()
 			i.TSDBState.dbs[userID] = db
+			i.userStatesMtx.Unlock()
 
 		}(userID)
 
@@ -533,6 +533,10 @@ func (i *Ingester) openExistingTSDB(ctx context.Context) error {
 
 	// Wait for all opening routines to finish
 	wg.Wait()
-	level.Info(util.Logger).Log("msg", "completed opening existing TSDBs")
+	if err != nil {
+		level.Error(util.Logger).Log("msg", "error while opening existing TSDBs")
+	} else {
+		level.Info(util.Logger).Log("msg", "successfully opened existing TSDBs")
+	}
 	return err
 }

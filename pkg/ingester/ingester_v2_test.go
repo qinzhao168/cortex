@@ -795,7 +795,7 @@ func TestIngester_v2LoadTSDBOnStartup(t *testing.T) {
 			clientCfg := defaultClientTestConfig()
 			limits := defaultLimitsTestConfig()
 
-			overrides, err := validation.NewOverrides(limits)
+			overrides, err := validation.NewOverrides(limits, nil)
 			require.NoError(t, err)
 
 			// Create a temporary directory for TSDB

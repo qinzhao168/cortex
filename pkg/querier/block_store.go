@@ -8,7 +8,6 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/cortexproject/cortex/pkg/ingester"
 	"github.com/cortexproject/cortex/pkg/storage/tsdb"
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
@@ -111,10 +110,7 @@ func (u *UserStore) syncUserStores(ctx context.Context, f func(context.Context, 
 			}
 
 			// Bucket with the user wrapper
-			userBkt := &ingester.Bucket{
-				UserID: user,
-				Bucket: bkt,
-			}
+			userBkt := tsdb.NewUserBucketClient(user, bkt)
 
 			indexCacheSizeBytes := u.cfg.BucketStore.IndexCacheSizeBytes
 			maxItemSizeBytes := indexCacheSizeBytes / 2

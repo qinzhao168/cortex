@@ -47,7 +47,7 @@ type TSDBState struct {
 func NewV2(cfg Config, clientConfig client.Config, limits *validation.Overrides, registerer prometheus.Registerer) (*Ingester, error) {
 	bucketClient, err := cortex_tsdb.NewBucketClient(context.Background(), cfg.TSDBConfig, "cortex", util.Logger)
 	if err != nil {
-		return nil, err
+		return nil, errors.Wrap(err, "failed to create the bucket client")
 	}
 
 	i := &Ingester{
@@ -401,7 +401,7 @@ func (i *Ingester) getOrCreateTSDB(userID string, force bool) (*tsdb.DB, error) 
 
 	// Create a new shipper for this database
 	if i.cfg.TSDBConfig.ShipInterval > 0 {
-		s := shipper.New(util.Logger, nil, udir, &Bucket{userID, i.TSDBState.bucket}, func() labels.Labels { return l }, metadata.ReceiveSource)
+		s := shipper.New(util.Logger, nil, udir, cortex_tsdb.NewUserBucketClient(userID, i.TSDBState.bucket), func() labels.Labels { return l }, metadata.ReceiveSource)
 		i.done.Add(1)
 		go func() {
 			defer i.done.Done()

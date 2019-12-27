@@ -382,7 +382,7 @@ func (i *Ingester) getOrCreateTSDB(userID string, force bool) (*tsdb.DB, error) 
 	var err error
 	db, err = tsdb.Open(udir, util.Logger, nil, &tsdb.Options{
 		RetentionDuration: uint64(i.cfg.TSDBConfig.Retention / time.Millisecond),
-		BlockRanges:       i.cfg.TSDBConfig.BlockRanges.ToMillisecondRanges(),
+		BlockRanges:       i.cfg.TSDBConfig.BlockRanges.ToMillisecond(),
 		NoLockfile:        true,
 	})
 	if err != nil {

@@ -74,3 +74,8 @@ func (b *UserBucketClient) Exists(ctx context.Context, name string) (bool, error
 func (b *UserBucketClient) IsObjNotFoundErr(err error) bool {
 	return b.bucket.IsObjNotFoundErr(err)
 }
+
+// ObjectSize returns the size of the specified object.
+func (b *UserBucketClient) ObjectSize(ctx context.Context, name string) (uint64, error) {
+	return b.bucket.ObjectSize(ctx, b.fullName(name))
+}

@@ -13,7 +13,7 @@ import (
 
 func TestConfig_ShouldSupportYamlConfig(t *testing.T) {
 	yamlCfg := `
-levels: [2h, 48h]
+block_ranges: [2h, 48h]
 consistency_delay: 1h
 block_sync_concurrency: 123
 data_dir: /tmp
@@ -24,7 +24,7 @@ compaction_retries: 123
 	cfg := Config{}
 	flagext.DefaultValues(&cfg)
 	assert.NoError(t, yaml.Unmarshal([]byte(yamlCfg), &cfg))
-	assert.Equal(t, cortex_tsdb.DurationList{2 * time.Hour, 48 * time.Hour}, cfg.Levels)
+	assert.Equal(t, cortex_tsdb.DurationList{2 * time.Hour, 48 * time.Hour}, cfg.BlockRanges)
 	assert.Equal(t, time.Hour, cfg.ConsistencyDelay)
 	assert.Equal(t, 123, cfg.BlockSyncConcurrency)
 	assert.Equal(t, "/tmp", cfg.DataDir)
@@ -37,7 +37,7 @@ func TestConfig_ShouldSupportCliFlags(t *testing.T) {
 	cfg := Config{}
 	cfg.RegisterFlags(fs)
 	fs.Parse([]string{
-		"-compactor.levels=2h,48h",
+		"-compactor.block-ranges=2h,48h",
 		"-compactor.consistency-delay=1h",
 		"-compactor.block-sync-concurrency=123",
 		"-compactor.data-dir=/tmp",
@@ -45,7 +45,7 @@ func TestConfig_ShouldSupportCliFlags(t *testing.T) {
 		"-compactor.compaction-retries=123",
 	})
 
-	assert.Equal(t, cortex_tsdb.DurationList{2 * time.Hour, 48 * time.Hour}, cfg.Levels)
+	assert.Equal(t, cortex_tsdb.DurationList{2 * time.Hour, 48 * time.Hour}, cfg.BlockRanges)
 	assert.Equal(t, time.Hour, cfg.ConsistencyDelay)
 	assert.Equal(t, 123, cfg.BlockSyncConcurrency)
 	assert.Equal(t, "/tmp", cfg.DataDir)

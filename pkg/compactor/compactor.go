@@ -23,9 +23,9 @@ import (
 
 // Config holds the Compactor config.
 type Config struct {
-	Levels               cortex_tsdb.DurationList `yaml:"levels"`
-	ConsistencyDelay     time.Duration            `yaml:"consistency_delay"`
+	BlockRanges          cortex_tsdb.DurationList `yaml:"block_ranges"`
 	BlockSyncConcurrency int                      `yaml:"block_sync_concurrency"`
+	ConsistencyDelay     time.Duration            `yaml:"consistency_delay"`
 	DataDir              string                   `yaml:"data_dir"`
 	CompactionInterval   time.Duration            `yaml:"compaction_interval"`
 	CompactionRetries    int                      `yaml:"compaction_retries"`
@@ -33,11 +33,11 @@ type Config struct {
 
 // RegisterFlags registers the Compactor flags.
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
-	cfg.Levels = cortex_tsdb.DurationList{2 * time.Hour, 12 * time.Hour, 24 * time.Hour}
+	cfg.BlockRanges = cortex_tsdb.DurationList{2 * time.Hour, 12 * time.Hour, 24 * time.Hour}
 	f.Var(
-		&cfg.Levels,
-		"compactor.levels",
-		"comma separated list of compaction levels expressed in the duration format")
+		&cfg.BlockRanges,
+		"compactor.block-ranges",
+		"comma separated list of compaction ranges expressed in the duration format")
 
 	f.DurationVar(
 		&cfg.ConsistencyDelay,
@@ -93,7 +93,7 @@ func NewCompactor(compactorCfg Config, storageCfg cortex_tsdb.Config, registerer
 		return nil, errors.Wrap(err, "failed to create the bucket client")
 	}
 
-	tsdbCompactor, err := tsdb.NewLeveledCompactor(context.Background(), registerer, util.Logger, compactorCfg.Levels.ToMillisecond(), downsample.NewPool())
+	tsdbCompactor, err := tsdb.NewLeveledCompactor(context.Background(), registerer, util.Logger, compactorCfg.BlockRanges.ToMillisecond(), downsample.NewPool())
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to create TSDB compactor")
 	}
@@ -103,6 +103,7 @@ func NewCompactor(compactorCfg Config, storageCfg cortex_tsdb.Config, registerer
 		storageCfg:    storageCfg,
 		bucketClient:  bucketClient,
 		tsdbCompactor: tsdbCompactor,
+		quit:          make(chan struct{}),
 	}
 
 	// Start the compactor loop.

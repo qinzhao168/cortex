@@ -150,7 +150,7 @@ func (u *UserStore) syncUserStores(ctx context.Context, f func(context.Context, 
 		go func(userID string, s *store.BucketStore) {
 			defer wg.Done()
 			if err := f(ctx, s); err != nil {
-				level.Warn(u.logger).Log("msg", "user sync failed", "user", userID)
+				level.Warn(u.logger).Log("msg", "user sync failed", "user", userID, "err", err)
 			}
 		}(user, bs)
 

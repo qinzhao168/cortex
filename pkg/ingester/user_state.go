@@ -2,8 +2,10 @@ package ingester
 
 import (
 	"context"
+	"encoding/binary"
 	"fmt"
 	"net/http"
+	"sort"
 	"sync"
 
 	"github.com/go-kit/kit/log/level"
@@ -13,8 +15,10 @@ import (
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/segmentio/fasthash/fnv1a"
 
+	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/ingester/index"
+	"github.com/cortexproject/cortex/pkg/querier/astmapper"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/extract"
 	"github.com/cortexproject/cortex/pkg/util/spanlogger"
@@ -295,6 +299,16 @@ func (u *userState) forSeriesMatching(ctx context.Context, allMatchers []*labels
 	log, ctx := spanlogger.New(ctx, "forSeriesMatching")
 	defer log.Finish()
 
+	// Check if one of the labels is a shard annotation and remove the label.
+	shard, shardLabelIndex, err := astmapper.ShardFromMatchers(allMatchers)
+	if err != nil {
+		return log.Error(err)
+	}
+
+	if shard != nil {
+		allMatchers = append(allMatchers[:shardLabelIndex], allMatchers[shardLabelIndex+1:]...)
+	}
+
 	filters, matchers := util.SplitFiltersAndMatchers(allMatchers)
 	fps := u.index.Lookup(matchers)
 	if len(fps) > u.limiter.MaxSeriesPerQuery(u.userID) {
@@ -316,6 +330,20 @@ outer:
 		if !ok {
 			u.fpLocker.Unlock(fp)
 			continue
+		}
+
+		if shard != nil {
+			// labels must be sorted for deterministic hash values
+			sort.Sort(series.metric)
+
+			if !matchesShard(shard, series) {
+				u.fpLocker.Unlock(fp)
+				continue
+			}
+
+			// inject the shard label in the return result but don't alter the resident memorySeries
+			metric := append(series.metric.Copy(), shard.Label())
+			series = series.WithMetric(metric)
 		}
 
 		for _, filter := range filters {
@@ -343,4 +371,14 @@ outer:
 		return send(ctx)
 	}
 	return nil
+}
+
+func matchesShard(shard *astmapper.ShardAnnotation, series *memorySeries) bool {
+	if shard == nil {
+		return false
+	}
+	seriesID := chunk.LabelsSeriesID(series.metric)
+	// read first 32 bits of the hash and use this to calculate the shard
+	seriesShard := binary.BigEndian.Uint32(seriesID) % uint32(shard.Of)
+	return seriesShard == uint32(shard.Shard)
 }

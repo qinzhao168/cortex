@@ -1,4 +1,4 @@
-<p align="center"><img src="imgs/logo.png" alt="Cortex Logo"></p>
+<p align="center"><img src="images/logo.png" alt="Cortex Logo"></p>
 
 [![Circle CI](https://circleci.com/gh/cortexproject/cortex/tree/master.svg?style=shield)](https://circleci.com/gh/cortexproject/cortex/tree/master)
 [![GoDoc](https://godoc.org/github.com/cortexproject/cortex?status.svg)](https://godoc.org/github.com/cortexproject/cortex)
@@ -14,10 +14,10 @@ Cortex provides horizontally scalable, highly available, multi-tenant, long term
 - **Highly available:** When run in a cluster, Cortex can replicate data between machines. This allows you to survive machine failure without gaps in your graphs.
 - **Multi-tenant:** Cortex can isolate data and queries from multiple different independent
 Prometheus sources in a single cluster, allowing untrusted parties to share the same cluster.
-- **Long term storage:** Cortex supports Amazon DynamoDB, Google Bigtable, Cassandra, S3 and GCS for long term storage of metric data.  This allows you to durably store data for longer than the lifetime of any single machine, and use this data for long term capacity planning.
+- **Long term storage:** Cortex supports Amazon DynamoDB, Google Bigtable, Cassandra, S3, GCS and Microsoft Azure for long term storage of metric data.  This allows you to durably store data for longer than the lifetime of any single machine, and use this data for long term capacity planning.
 
 Cortex is a [CNCF](https://cncf.io) sandbox project used in several production systems including [Weave Cloud](https://cloud.weave.works) and [Grafana Cloud](https://grafana.com/cloud).
-Cortex is a primarily used as a [remote write](https://prometheus.io/docs/operating/configuration/#remote_write) destination for Prometheus, with a Prometheus-compatible query API.
+Cortex is primarily used as a [remote write](https://prometheus.io/docs/operating/configuration/#remote_write) destination for Prometheus, with a Prometheus-compatible query API.
 
 ## Documentation
 
@@ -25,8 +25,8 @@ Read the [getting started guide](docs/getting_started.md) if you're new to the
 project. Before deploying Cortex with a permanent storage backend you
 should read:
 1. [An overview of Cortex's architecture](docs/architecture.md)
-1. [A general guide to running Cortex](docs/running.md)
-1. [Information regarding configuring Cortex](docs/arguments.md)
+1. [A general guide to running Cortex](docs/guides/running.md)
+1. [Information regarding configuring Cortex](docs/configuration/arguments.md)
 
 For a guide to contributing to Cortex, see the [contributor guidelines](CONTRIBUTING.md).
 

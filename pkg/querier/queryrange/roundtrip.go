@@ -28,6 +28,7 @@ import (
 	"github.com/weaveworks/common/user"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
+	"github.com/cortexproject/cortex/pkg/chunk/cache"
 	"github.com/cortexproject/cortex/pkg/querier/frontend"
 )
 
@@ -101,7 +102,7 @@ func NewTripperware(
 	cacheExtractor Extractor,
 	schema chunk.SchemaConfig,
 	engineOpts promql.EngineOpts,
-) (frontend.Tripperware, error) {
+) (frontend.Tripperware, cache.Cache, error) {
 	queryRangeMiddleware := []Middleware{LimitsMiddleware(limits)}
 	if cfg.AlignQueriesWithStep {
 		queryRangeMiddleware = append(queryRangeMiddleware, InstrumentMiddleware("step_align"), StepAlignMiddleware)
@@ -129,11 +130,13 @@ func NewTripperware(
 		queryRangeMiddleware = append(queryRangeMiddleware, InstrumentMiddleware("split_by_interval"), SplitByIntervalMiddleware(cfg.SplitQueriesByInterval, limits, codec))
 	}
 
+	var c cache.Cache
 	if cfg.CacheResults {
-		queryCacheMiddleware, err := NewResultsCacheMiddleware(log, cfg.ResultsCacheConfig, limits, codec, cacheExtractor)
+		queryCacheMiddleware, cache, err := NewResultsCacheMiddleware(log, cfg.ResultsCacheConfig, limits, codec, cacheExtractor)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
+		c = cache
 		queryRangeMiddleware = append(queryRangeMiddleware, InstrumentMiddleware("results_cache"), queryCacheMiddleware)
 	}
 	if cfg.MaxRetries > 0 {
@@ -152,10 +155,16 @@ func NewTripperware(
 	return frontend.Tripperware(func(next http.RoundTripper) http.RoundTripper {
 		// Finally, if the user selected any query range middleware, stitch it in.
 		if len(queryRangeMiddleware) > 0 {
-			return NewRoundTripper(next, codec, queryRangeMiddleware...)
+			queryrange := NewRoundTripper(next, codec, queryRangeMiddleware...)
+			return frontend.RoundTripFunc(func(r *http.Request) (*http.Response, error) {
+				if !strings.HasSuffix(r.URL.Path, "/query_range") {
+					return next.RoundTrip(r)
+				}
+				return queryrange.RoundTrip(r)
+			})
 		}
 		return next
-	}), nil
+	}), c, nil
 }
 
 type roundTripper struct {
@@ -176,9 +185,6 @@ func NewRoundTripper(next http.RoundTripper, codec Codec, middlewares ...Middlew
 }
 
 func (q roundTripper) RoundTrip(r *http.Request) (*http.Response, error) {
-	if !strings.HasSuffix(r.URL.Path, "/query_range") {
-		return q.next.RoundTrip(r)
-	}
 
 	request, err := q.codec.DecodeRequest(r.Context(), r)
 	if err != nil {
@@ -212,5 +218,5 @@ func (q roundTripper) Do(ctx context.Context, r Request) (Response, error) {
 	}
 	defer func() { _ = response.Body.Close() }()
 
-	return q.codec.DecodeResponse(ctx, response)
+	return q.codec.DecodeResponse(ctx, response, r)
 }

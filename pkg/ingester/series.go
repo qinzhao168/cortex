@@ -78,24 +78,20 @@ func (s *memorySeries) add(v model.SamplePair) error {
 		// If we don't know what the last sample value is, silently discard.
 		// This will mask some errors but better than complaining when we don't really know.
 		if !s.lastSampleValueSet {
-			return &memorySeriesError{errorType: "duplicate-timestamp", noReport: true}
+			return makeNoReportError("duplicate-timestamp")
 		}
 		// If both timestamp and sample value are the same as for the last append,
 		// ignore as they are a common occurrence when using client-side timestamps
 		// (e.g. Pushgateway or federation).
 		if v.Value.Equal(s.lastSampleValue) {
-			return &memorySeriesError{errorType: "duplicate-sample", noReport: true}
+			return makeNoReportError("duplicate-sample")
 		}
-		return &memorySeriesError{
-			message:   fmt.Sprintf("sample with repeated timestamp but different value for series %v; last value: %v, incoming value: %v", s.metric, s.lastSampleValue, v.Value),
-			errorType: "new-value-for-timestamp",
-		}
+		return makeMetricValidationError("new-value-for-timestamp", s.metric,
+			fmt.Errorf("sample with repeated timestamp but different value; last value: %v, incoming value: %v", s.lastSampleValue, v.Value))
 	}
 	if v.Timestamp < s.lastTime {
-		return &memorySeriesError{
-			message:   fmt.Sprintf("sample timestamp out of order for series %v; last timestamp: %v, incoming timestamp: %v", s.metric, s.lastTime, v.Timestamp),
-			errorType: "sample-out-of-order",
-		}
+		return makeMetricValidationError("sample-out-of-order", s.metric,
+			fmt.Errorf("sample timestamp out of order; last timestamp: %v, incoming timestamp: %v", s.lastTime, v.Timestamp))
 	}
 
 	if len(s.chunkDescs) == 0 || s.headChunkClosed {

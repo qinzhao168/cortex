@@ -8,7 +8,6 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/alecthomas/units"
 	"github.com/cortexproject/cortex/pkg/ingester"
 	"github.com/cortexproject/cortex/pkg/storage/tsdb"
 	"github.com/go-kit/kit/log"
@@ -18,31 +17,34 @@ import (
 	"github.com/thanos-io/thanos/pkg/store"
 	storecache "github.com/thanos-io/thanos/pkg/store/cache"
 	"github.com/thanos-io/thanos/pkg/store/storepb"
+	"github.com/weaveworks/common/logging"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/metadata"
 )
 
 // UserStore is a multi-tenant version of Thanos BucketStore
 type UserStore struct {
-	logger log.Logger
-	cfg    tsdb.Config
-	bucket objstore.BucketReader
-	stores map[string]*store.BucketStore
-	client storepb.StoreClient
+	logger   log.Logger
+	cfg      tsdb.Config
+	bucket   objstore.BucketReader
+	stores   map[string]*store.BucketStore
+	client   storepb.StoreClient
+	logLevel logging.Level
 }
 
 // NewUserStore returns a new UserStore
-func NewUserStore(cfg tsdb.Config, logger log.Logger) (*UserStore, error) {
+func NewUserStore(cfg tsdb.Config, logLevel logging.Level, logger log.Logger) (*UserStore, error) {
 	bkt, err := tsdb.NewBucketClient(context.Background(), cfg, "cortex-userstore", logger)
 	if err != nil {
 		return nil, err
 	}
 
 	u := &UserStore{
-		logger: logger,
-		cfg:    cfg,
-		bucket: bkt,
-		stores: make(map[string]*store.BucketStore),
+		logger:   logger,
+		cfg:      cfg,
+		bucket:   bkt,
+		stores:   make(map[string]*store.BucketStore),
+		logLevel: logLevel,
 	}
 
 	serv := grpc.NewServer()
@@ -97,7 +99,6 @@ func (u *UserStore) syncUserStores(ctx context.Context, f func(context.Context, 
 		var bs *store.BucketStore
 		var ok bool
 		if bs, ok = u.stores[user]; !ok {
-
 			level.Info(u.logger).Log("msg", "creating user bucket store", "user", user)
 
 			// Instance a new bucket used by this tenant's shipper. We're going
@@ -114,9 +115,9 @@ func (u *UserStore) syncUserStores(ctx context.Context, f func(context.Context, 
 				Bucket: bkt,
 			}
 
-			indexCacheSizeBytes := uint64(250 * units.Mebibyte)
+			indexCacheSizeBytes := u.cfg.BucketStore.IndexCacheSizeBytes
 			maxItemSizeBytes := indexCacheSizeBytes / 2
-			indexCache, err := storecache.NewIndexCache(u.logger, nil, storecache.Opts{
+			indexCache, err := storecache.NewInMemoryIndexCache(u.logger, nil, storecache.Opts{
 				MaxSizeBytes:     indexCacheSizeBytes,
 				MaxItemSizeBytes: maxItemSizeBytes,
 			})
@@ -127,13 +128,13 @@ func (u *UserStore) syncUserStores(ctx context.Context, f func(context.Context, 
 				u.logger,
 				nil,
 				userBkt,
-				filepath.Join(u.cfg.SyncDir, user),
+				filepath.Join(u.cfg.BucketStore.SyncDir, user),
 				indexCache,
-				uint64(2*units.Gibibyte),
-				0,
-				20,
-				false,
-				20,
+				uint64(u.cfg.BucketStore.MaxChunkPoolBytes),
+				u.cfg.BucketStore.MaxSampleCount,
+				u.cfg.BucketStore.MaxConcurrent,
+				u.logLevel.String() == "debug", // Turn on debug logging, if the log level is set to debug
+				u.cfg.BucketStore.BlockSyncConcurrency,
 				&store.FilterConfig{
 					MinTime: *mint,
 					MaxTime: *maxt,

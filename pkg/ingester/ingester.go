@@ -378,13 +378,13 @@ func (i *Ingester) Push(ctx old_ctx.Context, req *client.WriteRequest) (*client.
 				continue
 			}
 
-			return nil, err
+			return nil, wrapWithUser(err, userID)
 		}
 	}
 	defer client.ReuseSlice(req.Timeseries)
 
 	if lastPartialErr != nil {
-		return &client.WriteResponse{}, lastPartialErr.WrappedError()
+		return &client.WriteResponse{}, lastPartialErr.WrapWithUser(userID).WrappedError()
 	}
 
 	if record != nil {

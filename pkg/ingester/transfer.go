@@ -97,7 +97,7 @@ func (i *Ingester) TransferChunks(stream client.Ingester_TransferChunksServer) e
 				return errors.Wrap(err, "TransferChunks: fromWireChunks")
 			}
 
-			state, fp, series, err := userStates.getOrCreateSeries(stream.Context(), wireSeries.UserId, wireSeries.Labels, nil)
+			state, fp, series, err := userStates.getOrCreateSeries(stream.Context(), wireSeries.UserId, wireSeries.Labels)
 			if err != nil {
 				return errors.Wrapf(err, "TransferChunks: getOrCreateSeries: user %s series %s", wireSeries.UserId, wireSeries.Labels)
 			}
@@ -349,12 +349,8 @@ func (i *Ingester) TransferTSDB(stream client.Ingester_TransferTSDBServer) error
 	return nil
 }
 
-// The passed wireChunks slice is for re-use.
-func toWireChunks(descs []*desc, wireChunks []client.Chunk) ([]client.Chunk, error) {
-	if cap(wireChunks) < len(descs) {
-		wireChunks = make([]client.Chunk, 0, len(descs))
-	}
-	wireChunks = wireChunks[:0]
+func toWireChunks(descs []*desc) ([]client.Chunk, error) {
+	wireChunks := make([]client.Chunk, 0, len(descs))
 	for _, d := range descs {
 		wireChunk := client.Chunk{
 			StartTimestampMs: int64(d.FirstTime),
@@ -458,7 +454,6 @@ func (i *Ingester) transferOut(ctx context.Context) error {
 		return errors.Wrap(err, "TransferChunks")
 	}
 
-	var chunks []client.Chunk
 	for userID, state := range userStatesCopy {
 		for pair := range state.fpToSeries.iter() {
 			state.fpLocker.Lock(pair.fp)
@@ -468,7 +463,7 @@ func (i *Ingester) transferOut(ctx context.Context) error {
 				continue
 			}
 
-			chunks, err = toWireChunks(pair.series.chunkDescs, chunks)
+			chunks, err := toWireChunks(pair.series.chunkDescs)
 			if err != nil {
 				state.fpLocker.Unlock(pair.fp)
 				return errors.Wrap(err, "toWireChunks")

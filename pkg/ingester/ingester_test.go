@@ -177,7 +177,10 @@ func pushTestSamples(t *testing.T, ing *Ingester, numSeries, samplesPerSeries, o
 	return userIDs, testData
 }
 
-func retrieveTestSamples(t *testing.T, ing *Ingester, userIDs []string, testData map[string]model.Matrix) {
+func TestIngesterAppend(t *testing.T) {
+	store, ing := newDefaultTestStore(t)
+	userIDs, testData := pushTestSamples(t, ing, 10, 1000, 0)
+
 	// Read samples back via ingester queries.
 	for _, userID := range userIDs {
 		ctx := user.InjectOrgID(context.Background(), userID)
@@ -195,12 +198,6 @@ func retrieveTestSamples(t *testing.T, ing *Ingester, userIDs []string, testData
 		require.NoError(t, err)
 		assert.Equal(t, testData[userID].String(), res.String())
 	}
-}
-
-func TestIngesterAppend(t *testing.T) {
-	store, ing := newDefaultTestStore(t)
-	userIDs, testData := pushTestSamples(t, ing, 10, 1000, 0)
-	retrieveTestSamples(t, ing, userIDs, testData)
 
 	// Read samples back via chunk store.
 	ing.Shutdown()
@@ -310,22 +307,22 @@ func TestIngesterAppendOutOfOrderAndDuplicate(t *testing.T) {
 		{Name: model.MetricNameLabel, Value: "testmetric"},
 	}
 	ctx := context.Background()
-	err := ing.append(ctx, userID, m, 1, 0, client.API, nil)
+	err := ing.append(ctx, userID, m, 1, 0, client.API)
 	require.NoError(t, err)
 
 	// Two times exactly the same sample (noop).
-	err = ing.append(ctx, userID, m, 1, 0, client.API, nil)
+	err = ing.append(ctx, userID, m, 1, 0, client.API)
 	require.NoError(t, err)
 
 	// Earlier sample than previous one.
-	err = ing.append(ctx, userID, m, 0, 0, client.API, nil)
+	err = ing.append(ctx, userID, m, 0, 0, client.API)
 	require.Contains(t, err.Error(), "sample timestamp out of order")
 	errResp, ok := err.(*validationError)
 	require.True(t, ok)
 	require.Equal(t, errResp.code, 400)
 
 	// Same timestamp as previous sample, but different value.
-	err = ing.append(ctx, userID, m, 1, 1, client.API, nil)
+	err = ing.append(ctx, userID, m, 1, 1, client.API)
 	require.Contains(t, err.Error(), "sample with repeated timestamp but different value")
 	errResp, ok = err.(*validationError)
 	require.True(t, ok)
@@ -343,7 +340,7 @@ func TestIngesterAppendBlankLabel(t *testing.T) {
 		{Name: "bar", Value: ""},
 	}
 	ctx := user.InjectOrgID(context.Background(), userID)
-	err := ing.append(ctx, userID, lp, 1, 0, client.API, nil)
+	err := ing.append(ctx, userID, lp, 1, 0, client.API)
 	require.NoError(t, err)
 
 	res, _, err := runTestQuery(ctx, t, ing, labels.MatchEqual, labels.MetricName, "testmetric")

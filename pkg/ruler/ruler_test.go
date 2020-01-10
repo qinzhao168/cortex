@@ -50,9 +50,8 @@ func newTestRuler(t *testing.T, cfg Config) *Ruler {
 	})
 	queryable := querier.NewQueryable(nil, nil, nil, 0)
 	ruler, err := NewRuler(cfg, engine, queryable, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
+
 	return ruler
 }
 
@@ -74,9 +73,8 @@ func TestNotifierSendsUserIDHeader(t *testing.T) {
 
 	r := newTestRuler(t, cfg)
 	n, err := r.getOrCreateNotifier("1")
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
+
 	for _, not := range r.notifiers {
 		defer not.stop()
 	}

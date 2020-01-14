@@ -8,8 +8,11 @@ import (
 	"net/url"
 	"strconv"
 	"testing"
+	"time"
 
+	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/util"
+	"github.com/prometheus/prometheus/promql"
 	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/middleware"
 	"github.com/weaveworks/common/user"
@@ -41,7 +44,21 @@ func TestRoundTrip(t *testing.T) {
 		next: http.DefaultTransport,
 	}
 
-	tw, _, err := NewTripperware(Config{}, util.Logger, fakeLimits{}, PrometheusCodec, nil)
+	tw, _, err := NewTripperware(Config{},
+		util.Logger,
+		fakeLimits{},
+		PrometheusCodec,
+		nil,
+		chunk.SchemaConfig{},
+		promql.EngineOpts{
+			Logger:        util.Logger,
+			Reg:           nil,
+			MaxConcurrent: 10,
+			MaxSamples:    1000,
+			Timeout:       time.Minute,
+		},
+	)
+
 	if err != nil {
 		t.Fatal(err)
 	}

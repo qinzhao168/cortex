@@ -41,6 +41,26 @@ type memorySeries struct {
 	lastSampleValue    model.SampleValue
 }
 
+// WithMetric returns a shallow clone of a memory series with a different label set
+func (s *memorySeries) WithMetric(metric labels.Labels) *memorySeries {
+	c := *s
+	c.metric = metric
+	return &c
+}
+
+type memorySeriesError struct {
+	message   string
+	errorType string
+	noReport  bool // if true, error will be counted but not reported to caller
+}
+
+func (error *memorySeriesError) Error() string {
+	if error.message == "" {
+		return error.errorType
+	}
+	return error.message
+}
+
 // newMemorySeries returns a pointer to a newly allocated memorySeries for the
 // given metric.
 func newMemorySeries(m labels.Labels) *memorySeries {

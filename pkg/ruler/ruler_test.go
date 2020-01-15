@@ -11,7 +11,6 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/querier"
 	"github.com/cortexproject/cortex/pkg/ring"
-	"github.com/cortexproject/cortex/pkg/ring/kv/codec"
 	"github.com/cortexproject/cortex/pkg/ring/kv/consul"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/prometheus/prometheus/notifier"
@@ -22,7 +21,7 @@ import (
 )
 
 func defaultRulerConfig() Config {
-	codec := codec.Proto{Factory: ring.ProtoDescFactory}
+	codec := ring.GetCodec()
 	consul := consul.NewInMemoryClient(codec)
 	cfg := Config{
 		StoreConfig: RuleStoreConfig{

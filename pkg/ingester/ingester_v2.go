@@ -207,6 +207,8 @@ func (i *Ingester) v2Query(ctx old_ctx.Context, req *client.QueryRequest) (*clie
 		return nil, err
 	}
 
+	numSamples := 0
+
 	result := &client.QueryResponse{}
 	for ss.Next() {
 		series := ss.At()
@@ -221,8 +223,12 @@ func (i *Ingester) v2Query(ctx old_ctx.Context, req *client.QueryRequest) (*clie
 			ts.Samples = append(ts.Samples, client.Sample{Value: v, TimestampMs: t})
 		}
 
+		numSamples += len(ts.Samples)
 		result.Timeseries = append(result.Timeseries, ts)
 	}
+
+	i.metrics.queriedSeries.Observe(float64(len(result.Timeseries)))
+	i.metrics.queriedSamples.Observe(float64(numSamples))
 
 	return result, ss.Err()
 }
@@ -393,6 +399,8 @@ func (i *Ingester) getOrCreateTSDB(userID string, force bool) (*tsdb.DB, error) 
 
 	// Add the db to list of user databases
 	i.TSDBState.dbs[userID] = db
+	memUsers.Inc()
+
 	return db, nil
 }
 

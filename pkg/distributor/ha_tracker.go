@@ -11,6 +11,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/cortexproject/cortex/pkg/ring/kv/codec"
 	"github.com/weaveworks/common/httpgrpc"
 
 	"github.com/go-kit/kit/log"
@@ -23,7 +24,6 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/ring/kv"
-	"github.com/cortexproject/cortex/pkg/ring/kv/codec"
 	"github.com/cortexproject/cortex/pkg/util"
 )
 
@@ -137,10 +137,14 @@ func (cfg *HATrackerConfig) Validate() error {
 	return nil
 }
 
+func GetReplicaDescCodec() codec.Proto {
+	return codec.NewProtoCodec("replicaDesc", ProtoReplicaDescFactory)
+}
+
 // NewClusterTracker returns a new HA cluster tracker using either Consul
 // or in-memory KV store.
 func newClusterTracker(cfg HATrackerConfig) (*haTracker, error) {
-	codec := codec.Proto{Factory: ProtoReplicaDescFactory}
+	codec := GetReplicaDescCodec()
 
 	var jitter time.Duration
 	if cfg.UpdateTimeoutJitterMax > 0 {

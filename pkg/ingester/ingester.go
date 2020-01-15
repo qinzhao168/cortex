@@ -41,14 +41,18 @@ var (
 )
 
 type ingesterMetrics struct {
-	flushQueueLength    prometheus.Gauge
-	ingestedSamples     prometheus.Counter
-	ingestedSamplesFail prometheus.Counter
-	queries             prometheus.Counter
-	queriedSamples      prometheus.Histogram
-	queriedSeries       prometheus.Histogram
-	queriedChunks       prometheus.Histogram
-	walReplayDuration   prometheus.Gauge
+	flushQueueLength      prometheus.Gauge
+	ingestedSamples       prometheus.Counter
+	ingestedSamplesFail   prometheus.Counter
+	queries               prometheus.Counter
+	queriedSamples        prometheus.Histogram
+	queriedSeries         prometheus.Histogram
+	queriedChunks         prometheus.Histogram
+	walReplayDuration     prometheus.Gauge
+	memSeries             prometheus.Gauge
+	memUsers              prometheus.Gauge
+	memSeriesCreatedTotal *prometheus.CounterVec
+	memSeriesRemovedTotal *prometheus.CounterVec
 }
 
 func newIngesterMetrics(r prometheus.Registerer) *ingesterMetrics {
@@ -91,6 +95,22 @@ func newIngesterMetrics(r prometheus.Registerer) *ingesterMetrics {
 			Name: "cortex_ingester_wal_replay_duration_seconds",
 			Help: "Time taken to replay the checkpoint and the WAL.",
 		}),
+		memSeries: prometheus.NewGauge(prometheus.GaugeOpts{
+			Name: "cortex_ingester_memory_series",
+			Help: "The current number of series in memory.",
+		}),
+		memUsers: prometheus.NewGauge(prometheus.GaugeOpts{
+			Name: "cortex_ingester_memory_users",
+			Help: "The current number of users in memory.",
+		}),
+		memSeriesCreatedTotal: prometheus.NewCounterVec(prometheus.CounterOpts{
+			Name: "cortex_ingester_memory_series_created_total",
+			Help: "The total number of series that were created per user.",
+		}, []string{"user"}),
+		memSeriesRemovedTotal: prometheus.NewCounterVec(prometheus.CounterOpts{
+			Name: "cortex_ingester_memory_series_removed_total",
+			Help: "The total number of series that were removed per user.",
+		}, []string{"user"}),
 	}
 
 	if r != nil {
@@ -102,6 +122,10 @@ func newIngesterMetrics(r prometheus.Registerer) *ingesterMetrics {
 			m.queriedSamples,
 			m.queriedSeries,
 			m.queriedChunks,
+			m.memSeries,
+			m.memUsers,
+			m.memSeriesCreatedTotal,
+			m.memSeriesRemovedTotal,
 		)
 	}
 
@@ -256,7 +280,7 @@ func New(cfg Config, clientConfig client.Config, limits *validation.Overrides, c
 
 	// If the WAL recover happened, then the userStates would already be set.
 	if i.userStates == nil {
-		i.userStates = newUserStates(i.limiter, cfg)
+		i.userStates = newUserStates(i.limiter, cfg, i.metrics)
 	}
 
 	i.wal, err = newWAL(cfg.WALConfig, i.userStates.cp)

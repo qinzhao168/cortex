@@ -32,13 +32,16 @@
 * [FEATURE] EXPERIMENTAL: Added `/series` API endpoint support with TSDB blocks storage. #1830
 * [FEATURE] Added "multi" KV store that can interact with two other KV stores, primary one for all reads and writes, and secondary one, which only receives writes. Primary/secondary store can be modified in runtime via runtime-config mechanism (previously "overrides"). #1749
 * [ENHANCEMENT] Added `password` and `enable_tls` options to redis cache configuration. Enables usage of Microsoft Azure Cache for Redis service.
+* [ENHANCEMENT] Experimental TSDB: Open existing TSDB on startup to prevent ingester from becoming ready before it can accept writes. #1917
+  * `--experimental.tsdb.max-tsdb-opening-concurrency-on-startup`
 * [BUGFIX] Fixed unnecessary CAS operations done by the HA tracker when the jitter is enabled. #1861
 * [BUGFIX] Fixed #1904 ingesters getting stuck in a LEAVING state after coming up from an ungraceful exit. #1921
 * [BUGFIX] TSDB: Fixed handling of out of order/bound samples in ingesters with the experimental TSDB blocks storage. #1864
 * [BUGFIX] TSDB: Fixed querying ingesters in `LEAVING` state with the experimental TSDB blocks storage. #1854
 * [BUGFIX] TSDB: Fixed error handling in the series to chunks conversion with the experimental TSDB blocks storage. #1837
 * [BUGFIX] TSDB: Fixed TSDB creation conflict with blocks transfer in a `JOINING` ingester with the experimental TSDB blocks storage. #1818
-
+* [BUGFIX] TSDB: `experimental.tsdb.ship-interval` of <=0 treated as disabled instead of allowing panic. #1975
+* [BUGFIX] TSDB: ShipInterval of <=0 treated as disabled instead of allowing panic. #1975
 ## 0.4.0 / 2019-12-02
 
 * [CHANGE] The frontend component has been refactored to be easier to re-use. When upgrading the frontend, cache entries will be discarded and re-created with the new protobuf schema. #1734

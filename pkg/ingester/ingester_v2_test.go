@@ -15,6 +15,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/util/test"
 	"github.com/cortexproject/cortex/pkg/util/validation"
+	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/prometheus/common/model"
@@ -73,7 +74,7 @@ func TestIngester_v2Push(t *testing.T) {
 					[]client.Sample{{Value: 1, TimestampMs: 9}},
 					client.API),
 			},
-			expectedErr: httpgrpc.Errorf(http.StatusBadRequest, wrapWithUser(tsdb.ErrOutOfOrderSample, userID).Error()),
+			expectedErr: httpgrpc.Errorf(http.StatusBadRequest, wrapWithUser(errors.Wrapf(tsdb.ErrOutOfOrderSample, "series=%s", metricLabels.String()), userID).Error()),
 			expectedIngested: []client.TimeSeries{
 				{Labels: metricLabelAdapters, Samples: []client.Sample{{Value: 2, TimestampMs: 10}}},
 			},
@@ -97,7 +98,7 @@ func TestIngester_v2Push(t *testing.T) {
 					[]client.Sample{{Value: 1, TimestampMs: 1575043969 - (86400 * 1000)}},
 					client.API),
 			},
-			expectedErr: httpgrpc.Errorf(http.StatusBadRequest, wrapWithUser(tsdb.ErrOutOfBounds, userID).Error()),
+			expectedErr: httpgrpc.Errorf(http.StatusBadRequest, wrapWithUser(errors.Wrapf(tsdb.ErrOutOfBounds, "series=%s", metricLabels.String()), userID).Error()),
 			expectedIngested: []client.TimeSeries{
 				{Labels: metricLabelAdapters, Samples: []client.Sample{{Value: 2, TimestampMs: 1575043969}}},
 			},
@@ -121,7 +122,7 @@ func TestIngester_v2Push(t *testing.T) {
 					[]client.Sample{{Value: 1, TimestampMs: 1575043969}},
 					client.API),
 			},
-			expectedErr: httpgrpc.Errorf(http.StatusBadRequest, wrapWithUser(tsdb.ErrAmendSample, userID).Error()),
+			expectedErr: httpgrpc.Errorf(http.StatusBadRequest, wrapWithUser(errors.Wrapf(tsdb.ErrAmendSample, "series=%s", metricLabels.String()), userID).Error()),
 			expectedIngested: []client.TimeSeries{
 				{Labels: metricLabelAdapters, Samples: []client.Sample{{Value: 2, TimestampMs: 1575043969}}},
 			},

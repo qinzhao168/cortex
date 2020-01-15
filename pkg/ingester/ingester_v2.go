@@ -15,6 +15,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/validation"
 	"github.com/go-kit/kit/log/level"
+	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/prometheus/pkg/gate"
 	"github.com/prometheus/prometheus/pkg/labels"
@@ -50,7 +51,7 @@ type TSDBState struct {
 func NewV2(cfg Config, clientConfig client.Config, limits *validation.Overrides, registerer prometheus.Registerer) (*Ingester, error) {
 	bucketClient, err := cortex_tsdb.NewBucketClient(context.Background(), cfg.TSDBConfig, "cortex", util.Logger)
 	if err != nil {
-		return nil, err
+		return nil, errors.Wrap(err, "failed to create the bucket client")
 	}
 
 	i := &Ingester{
@@ -89,7 +90,7 @@ func NewV2(cfg Config, clientConfig client.Config, limits *validation.Overrides,
 
 // v2Push adds metrics to a block
 func (i *Ingester) v2Push(ctx old_ctx.Context, req *client.WriteRequest) (*client.WriteResponse, error) {
-	var lastPartialErr error
+	var firstPartialErr error
 
 	userID, err := user.ExtractOrgID(ctx)
 	if err != nil {
@@ -144,7 +145,10 @@ func (i *Ingester) v2Push(ctx old_ctx.Context, req *client.WriteRequest) (*clien
 			// 400 error to the client. The client (Prometheus) will not retry on 400, and
 			// we actually ingested all samples which haven't failed.
 			if err == tsdb.ErrOutOfBounds || err == tsdb.ErrOutOfOrderSample || err == tsdb.ErrAmendSample {
-				lastPartialErr = err
+				if firstPartialErr == nil {
+					firstPartialErr = errors.Wrapf(err, "series=%s", lset.String())
+				}
+
 				continue
 			}
 
@@ -168,8 +172,8 @@ func (i *Ingester) v2Push(ctx old_ctx.Context, req *client.WriteRequest) (*clien
 
 	client.ReuseSlice(req.Timeseries)
 
-	if lastPartialErr != nil {
-		return &client.WriteResponse{}, httpgrpc.Errorf(http.StatusBadRequest, wrapWithUser(lastPartialErr, userID).Error())
+	if firstPartialErr != nil {
+		return &client.WriteResponse{}, httpgrpc.Errorf(http.StatusBadRequest, wrapWithUser(firstPartialErr, userID).Error())
 	}
 	return &client.WriteResponse{}, nil
 }
@@ -399,7 +403,7 @@ func (i *Ingester) createTSDB(userID string) (*tsdb.DB, error) {
 	// Create a new user database
 	db, err := tsdb.Open(udir, util.Logger, nil, &tsdb.Options{
 		RetentionDuration: uint64(i.cfg.TSDBConfig.Retention / time.Millisecond),
-		BlockRanges:       i.cfg.TSDBConfig.BlockRanges.ToMillisecondRanges(),
+		BlockRanges:       i.cfg.TSDBConfig.BlockRanges.ToMillisecond(),
 		NoLockfile:        true,
 	})
 	if err != nil {
@@ -418,7 +422,7 @@ func (i *Ingester) createTSDB(userID string) (*tsdb.DB, error) {
 
 	// Create a new shipper for this database
 	if i.cfg.TSDBConfig.ShipInterval > 0 {
-		s := shipper.New(util.Logger, nil, udir, &Bucket{userID, i.TSDBState.bucket}, func() labels.Labels { return l }, metadata.ReceiveSource)
+		s := shipper.New(util.Logger, nil, udir, cortex_tsdb.NewUserBucketClient(userID, i.TSDBState.bucket), func() labels.Labels { return l }, metadata.ReceiveSource)
 		i.done.Add(1)
 		go func() {
 			defer i.done.Done()

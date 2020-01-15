@@ -23,6 +23,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/alertmanager"
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/chunk/storage"
+	"github.com/cortexproject/cortex/pkg/compactor"
 	"github.com/cortexproject/cortex/pkg/configs/api"
 	"github.com/cortexproject/cortex/pkg/configs/db"
 	"github.com/cortexproject/cortex/pkg/distributor"
@@ -56,6 +57,7 @@ const (
 	Ruler
 	Configs
 	AlertManager
+	Compactor
 	All
 )
 
@@ -87,6 +89,8 @@ func (m moduleName) String() string {
 		return "configs"
 	case AlertManager:
 		return "alertmanager"
+	case Compactor:
+		return "compactor"
 	case All:
 		return "all"
 	default:
@@ -131,6 +135,9 @@ func (m *moduleName) Set(s string) error {
 		return nil
 	case "alertmanager":
 		*m = AlertManager
+		return nil
+	case "compactor":
+		*m = Compactor
 		return nil
 	case "all":
 		*m = All
@@ -478,6 +485,16 @@ func (t *Cortex) stopAlertmanager() error {
 	return nil
 }
 
+func (t *Cortex) initCompactor(cfg *Config) (err error) {
+	t.compactor, err = compactor.NewCompactor(cfg.Compactor, cfg.TSDB, util.Logger, prometheus.DefaultRegisterer)
+	return err
+}
+
+func (t *Cortex) stopCompactor() error {
+	t.compactor.Shutdown()
+	return nil
+}
+
 type module struct {
 	deps []moduleName
 	init func(t *Cortex, cfg *Config) error
@@ -557,6 +574,12 @@ var modules = map[moduleName]module{
 		deps: []moduleName{Server},
 		init: (*Cortex).initAlertmanager,
 		stop: (*Cortex).stopAlertmanager,
+	},
+
+	Compactor: {
+		deps: []moduleName{Server},
+		init: (*Cortex).initCompactor,
+		stop: (*Cortex).stopCompactor,
 	},
 
 	All: {

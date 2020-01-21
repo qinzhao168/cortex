@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/cortexproject/cortex/pkg/ring/kv/memberlist"
 	"github.com/go-kit/kit/log/level"
 	"github.com/pkg/errors"
 	"github.com/weaveworks/common/middleware"
@@ -30,6 +29,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/querier/frontend"
 	"github.com/cortexproject/cortex/pkg/querier/queryrange"
 	"github.com/cortexproject/cortex/pkg/ring"
+	"github.com/cortexproject/cortex/pkg/ring/kv/memberlist"
 	"github.com/cortexproject/cortex/pkg/ruler"
 	"github.com/cortexproject/cortex/pkg/storage/tsdb"
 	"github.com/cortexproject/cortex/pkg/util"

@@ -11,7 +11,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/cortexproject/cortex/pkg/ring/kv/codec"
 	"github.com/weaveworks/common/httpgrpc"
 
 	"github.com/go-kit/kit/log"
@@ -24,6 +23,7 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/ring/kv"
+	"github.com/cortexproject/cortex/pkg/ring/kv/codec"
 	"github.com/cortexproject/cortex/pkg/util"
 )
 

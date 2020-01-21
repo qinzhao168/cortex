@@ -113,7 +113,7 @@ var (
 		},
 		{
 			name:       "memberlist_config",
-			structType: reflect.TypeOf(memberlist.Config{}),
+			structType: reflect.TypeOf(memberlist.KVConfig{}),
 			desc:       "The memberlist_config configures the Gossip memberlist.",
 		},
 		{

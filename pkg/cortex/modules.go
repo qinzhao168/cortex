@@ -55,6 +55,7 @@ const (
 	Configs
 	AlertManager
 	Compactor
+	MemberlistKV
 	All
 )
 
@@ -88,6 +89,8 @@ func (m moduleName) String() string {
 		return "alertmanager"
 	case Compactor:
 		return "compactor"
+	case MemberlistKV:
+		return "memberlist-kv"
 	case All:
 		return "all"
 	default:
@@ -168,6 +171,7 @@ func (t *Cortex) stopServer() (err error) {
 
 func (t *Cortex) initRing(cfg *Config) (err error) {
 	cfg.Ingester.LifecyclerConfig.RingConfig.KVStore.Multi.ConfigProvider = multiClientRuntimeConfigChannel(t.runtimeConfig)
+	cfg.Ingester.LifecyclerConfig.RingConfig.KVStore.MemberlistKV = t.memberlistKVState.getMemberlistKV
 	t.ring, err = ring.New(cfg.Ingester.LifecyclerConfig.RingConfig, "ingester", ring.IngesterRingKey)
 	if err != nil {
 		return
@@ -288,6 +292,7 @@ func (t *Cortex) stopQuerier() error {
 
 func (t *Cortex) initIngester(cfg *Config) (err error) {
 	cfg.Ingester.LifecyclerConfig.RingConfig.KVStore.Multi.ConfigProvider = multiClientRuntimeConfigChannel(t.runtimeConfig)
+	cfg.Ingester.LifecyclerConfig.RingConfig.KVStore.MemberlistKV = t.memberlistKVState.getMemberlistKV
 	cfg.Ingester.LifecyclerConfig.ListenPort = &cfg.Server.GRPCListenPort
 	cfg.Ingester.TSDBEnabled = cfg.Storage.Engine == storage.StorageEngineTSDB
 	cfg.Ingester.TSDBConfig = cfg.TSDB
@@ -481,6 +486,20 @@ func (t *Cortex) stopCompactor() error {
 	return nil
 }
 
+func (t *Cortex) initMemberlistKV(cfg *Config) (err error) {
+	cfg.MemberlistKV.MetricsRegisterer = prometheus.DefaultRegisterer
+	t.memberlistKVState = newMemberlistKVState(&cfg.MemberlistKV)
+	return nil
+}
+
+func (t *Cortex) stopMemberlistKV() (err error) {
+	kv := t.memberlistKVState.kv
+	if kv != nil {
+		kv.Stop()
+	}
+	return nil
+}
+
 type module struct {
 	deps []moduleName
 	init func(t *Cortex, cfg *Config) error
@@ -498,8 +517,13 @@ var modules = map[moduleName]module{
 		stop: (*Cortex).stopRuntimeConfig,
 	},
 
+	MemberlistKV: {
+		init: (*Cortex).initMemberlistKV,
+		stop: (*Cortex).stopMemberlistKV,
+	},
+
 	Ring: {
-		deps: []moduleName{Server, RuntimeConfig},
+		deps: []moduleName{Server, RuntimeConfig, MemberlistKV},
 		init: (*Cortex).initRing,
 	},
 
@@ -521,7 +545,7 @@ var modules = map[moduleName]module{
 	},
 
 	Ingester: {
-		deps: []moduleName{Overrides, Store, Server, RuntimeConfig},
+		deps: []moduleName{Overrides, Store, Server, RuntimeConfig, MemberlistKV},
 		init: (*Cortex).initIngester,
 		stop: (*Cortex).stopIngester,
 	},

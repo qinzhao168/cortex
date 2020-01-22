@@ -623,12 +623,11 @@ func (i *Ingester) shipBlocksLoop() {
 	// shutdown, so that if there's any shipper sync in progress it will be
 	// quickly canceled.
 	go func() {
-		select {
-		case <-i.quit:
-			for _, userID := range i.getTSDBUsers() {
-				if userDB := i.getTSDB(userID); userDB != nil && userDB.shipperCancel != nil {
-					userDB.shipperCancel()
-				}
+		<-i.quit
+
+		for _, userID := range i.getTSDBUsers() {
+			if userDB := i.getTSDB(userID); userDB != nil && userDB.shipperCancel != nil {
+				userDB.shipperCancel()
 			}
 		}
 	}()

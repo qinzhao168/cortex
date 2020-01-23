@@ -1786,6 +1786,10 @@ func (b rawChunk) NumSamples() int {
 	panic("invalid call")
 }
 
+func (b rawChunk) Compact() {
+	// Nothing to do
+}
+
 func (r *bucketChunkReader) Close() error {
 	r.block.pendingReaders.Done()
 

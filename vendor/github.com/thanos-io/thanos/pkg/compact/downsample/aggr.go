@@ -58,6 +58,10 @@ func (c AggrChunk) NumSamples() int {
 	return x.NumSamples()
 }
 
+func (c AggrChunk) Compact() {
+	// Nothing to do
+}
+
 // ErrAggrNotExist is returned if a requested aggregation is not present in an AggrChunk.
 var ErrAggrNotExist = errors.New("aggregate does not exist")
 

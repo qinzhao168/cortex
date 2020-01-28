@@ -238,20 +238,11 @@ type entries interface {
 	FilterReadQueries(queries []IndexQuery, shard *astmapper.ShardAnnotation) []IndexQuery
 }
 
-// noops is a placeholder which can be embedded to provide default implementations
-type noops struct{}
-
-func (n noops) FilterReadQueries(queries []IndexQuery, shard *astmapper.ShardAnnotation) []IndexQuery {
-	return queries
-}
-
 // original entries:
 // - hash key: <userid>:<bucket>:<metric name>
 // - range key: <label name>\0<label value>\0<chunk name>
 
-type originalEntries struct {
-	noops
-}
+type originalEntries struct{}
 
 func (originalEntries) GetWriteEntries(bucket Bucket, metricName string, labels labels.Labels, chunkID string) ([]IndexEntry, error) {
 	chunkIDBytes := []byte(chunkID)
@@ -320,6 +311,10 @@ func (originalEntries) GetLabelNamesForSeries(_ Bucket, _ []byte) ([]IndexQuery,
 	return nil, ErrNotSupported
 }
 
+func (originalEntries) FilterReadQueries(queries []IndexQuery, shard *astmapper.ShardAnnotation) []IndexQuery {
+	return queries
+}
+
 // v3Schema went to base64 encoded label values & a version ID
 // - range key: <label name>\0<base64(label value)>\0<chunk name>\0<version 1>
 
@@ -368,9 +363,7 @@ func (base64Entries) GetReadMetricLabelValueQueries(bucket Bucket, metricName st
 //    - range key: \0<base64(label value)>\0<chunk name>\0<version 2>
 // 2) - hash key: <userid>:<hour bucket>:<metric name>
 //    - range key: \0\0<chunk name>\0<version 3>
-type labelNameInHashKeyEntries struct {
-	noops
-}
+type labelNameInHashKeyEntries struct{}
 
 func (labelNameInHashKeyEntries) GetWriteEntries(bucket Bucket, metricName string, labels labels.Labels, chunkID string) ([]IndexEntry, error) {
 	chunkIDBytes := []byte(chunkID)
@@ -441,12 +434,14 @@ func (labelNameInHashKeyEntries) GetLabelNamesForSeries(_ Bucket, _ []byte) ([]I
 	return nil, ErrNotSupported
 }
 
+func (labelNameInHashKeyEntries) FilterReadQueries(queries []IndexQuery, shard *astmapper.ShardAnnotation) []IndexQuery {
+	return queries
+}
+
 // v5 schema is an extension of v4, with the chunk end time in the
 // range key to improve query latency.  However, it did it wrong
 // so the chunk end times are ignored.
-type v5Entries struct {
-	noops
-}
+type v5Entries struct{}
 
 func (v5Entries) GetWriteEntries(bucket Bucket, metricName string, labels labels.Labels, chunkID string) ([]IndexEntry, error) {
 	chunkIDBytes := []byte(chunkID)
@@ -517,11 +512,13 @@ func (v5Entries) GetLabelNamesForSeries(_ Bucket, _ []byte) ([]IndexQuery, error
 	return nil, ErrNotSupported
 }
 
+func (v5Entries) FilterReadQueries(queries []IndexQuery, shard *astmapper.ShardAnnotation) []IndexQuery {
+	return queries
+}
+
 // v6Entries fixes issues with v5 time encoding being wrong (see #337), and
 // moves label value out of range key (see #199).
-type v6Entries struct {
-	noops
-}
+type v6Entries struct{}
 
 func (v6Entries) GetWriteEntries(bucket Bucket, metricName string, labels labels.Labels, chunkID string) ([]IndexEntry, error) {
 	chunkIDBytes := []byte(chunkID)
@@ -599,10 +596,12 @@ func (v6Entries) GetLabelNamesForSeries(_ Bucket, _ []byte) ([]IndexQuery, error
 	return nil, ErrNotSupported
 }
 
-// v9Entries adds a layer of indirection between labels -> series -> chunks.
-type v9Entries struct {
-	noops
+func (v6Entries) FilterReadQueries(queries []IndexQuery, shard *astmapper.ShardAnnotation) []IndexQuery {
+	return queries
 }
+
+// v9Entries adds a layer of indirection between labels -> series -> chunks.
+type v9Entries struct{}
 
 func (v9Entries) GetWriteEntries(bucket Bucket, metricName string, labels labels.Labels, chunkID string) ([]IndexEntry, error) {
 	return nil, ErrNotSupported
@@ -697,6 +696,10 @@ func (v9Entries) GetChunksForSeries(bucket Bucket, seriesID []byte) ([]IndexQuer
 
 func (v9Entries) GetLabelNamesForSeries(_ Bucket, _ []byte) ([]IndexQuery, error) {
 	return nil, ErrNotSupported
+}
+
+func (v9Entries) FilterReadQueries(queries []IndexQuery, shard *astmapper.ShardAnnotation) []IndexQuery {
+	return queries
 }
 
 // v10Entries builds on v9 by sharding index rows to reduce their size.

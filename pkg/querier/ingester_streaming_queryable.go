@@ -13,6 +13,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/ingester/client"
 	seriesset "github.com/cortexproject/cortex/pkg/querier/series"
 	"github.com/cortexproject/cortex/pkg/util/chunkcompat"
+	"github.com/cortexproject/cortex/pkg/util/spanlogger"
 	"github.com/weaveworks/common/user"
 )
 
@@ -72,7 +73,10 @@ type ingesterStreamingQuerier struct {
 }
 
 func (q *ingesterStreamingQuerier) Select(sp *storage.SelectParams, matchers ...*labels.Matcher) (storage.SeriesSet, storage.Warnings, error) {
-	userID, err := user.ExtractOrgID(q.ctx)
+	log, ctx := spanlogger.New(q.ctx, "ingesterStreamingQuerier.Select")
+	defer log.Span.Finish()
+
+	userID, err := user.ExtractOrgID(ctx)
 	if err != nil {
 		return nil, nil, promql.ErrStorage{Err: err}
 	}
@@ -83,7 +87,7 @@ func (q *ingesterStreamingQuerier) Select(sp *storage.SelectParams, matchers ...
 		maxt = sp.End
 	}
 
-	results, err := q.distributor.QueryStream(q.ctx, model.Time(mint), model.Time(maxt), matchers...)
+	results, err := q.distributor.QueryStream(ctx, model.Time(mint), model.Time(maxt), matchers...)
 	if err != nil {
 		return nil, nil, promql.ErrStorage{Err: err}
 	}

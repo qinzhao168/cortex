@@ -11,6 +11,7 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/querier/chunkstore"
+	"github.com/cortexproject/cortex/pkg/util/spanlogger"
 )
 
 func newUnifiedChunkQueryable(ds, cs chunkstore.ChunkStore, distributor Distributor, chunkIteratorFunc chunkIteratorFunc, ingesterMaxQueryLookback time.Duration) storage.Queryable {
@@ -51,6 +52,9 @@ type unifiedChunkQuerier struct {
 }
 
 func (q *unifiedChunkQuerier) Get(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([]chunk.Chunk, error) {
+	log, ctx := spanlogger.New(ctx, "unifiedChunkQuerier.Get")
+	defer log.Span.Finish()
+
 	css := make(chan []chunk.Chunk, len(q.stores))
 	errs := make(chan error, len(q.stores))
 	for _, store := range q.stores {
@@ -78,7 +82,10 @@ func (q *unifiedChunkQuerier) Get(ctx context.Context, userID string, from, thro
 
 // Select implements storage.Querier.
 func (q *unifiedChunkQuerier) Select(sp *storage.SelectParams, matchers ...*labels.Matcher) (storage.SeriesSet, storage.Warnings, error) {
-	userID, err := user.ExtractOrgID(q.ctx)
+	log, ctx := spanlogger.New(q.ctx, "unifiedChunkQuerier.Select")
+	defer log.Span.Finish()
+
+	userID, err := user.ExtractOrgID(ctx)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -87,7 +94,7 @@ func (q *unifiedChunkQuerier) Select(sp *storage.SelectParams, matchers ...*labe
 		return q.metadataQuery(matchers...)
 	}
 
-	chunks, err := q.Get(q.ctx, userID, model.Time(sp.Start), model.Time(sp.End), matchers...)
+	chunks, err := q.Get(ctx, userID, model.Time(sp.Start), model.Time(sp.End), matchers...)
 	if err != nil {
 		return nil, nil, err
 	}

@@ -7,7 +7,11 @@ import (
 	"fmt"
 	"strings"
 
+	"strconv"
+
 	jsoniter "github.com/json-iterator/go"
+
+	"github.com/cortexproject/cortex/pkg/querier/astmapper"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
 )
@@ -46,6 +50,7 @@ type Schema interface {
 	GetReadQueriesForMetric(from, through model.Time, userID string, metricName string) ([]IndexQuery, error)
 	GetReadQueriesForMetricLabel(from, through model.Time, userID string, metricName string, labelName string) ([]IndexQuery, error)
 	GetReadQueriesForMetricLabelValue(from, through model.Time, userID string, metricName string, labelName string, labelValue string) ([]IndexQuery, error)
+	FilterReadQueries(queries []IndexQuery, shard *astmapper.ShardAnnotation) []IndexQuery
 
 	// If the query resulted in series IDs, use this method to find chunks.
 	GetChunksForSeries(from, through model.Time, userID string, seriesID []byte) ([]IndexQuery, error)
@@ -216,6 +221,10 @@ func (s schema) GetLabelNamesForSeries(from, through model.Time, userID string, 
 	return result, nil
 }
 
+func (s schema) FilterReadQueries(queries []IndexQuery, shard *astmapper.ShardAnnotation) []IndexQuery {
+	return s.entries.FilterReadQueries(queries, shard)
+}
+
 type entries interface {
 	GetWriteEntries(bucket Bucket, metricName string, labels labels.Labels, chunkID string) ([]IndexEntry, error)
 	GetLabelWriteEntries(bucket Bucket, metricName string, labels labels.Labels, chunkID string) ([]IndexEntry, error)
@@ -226,6 +235,7 @@ type entries interface {
 	GetReadMetricLabelValueQueries(bucket Bucket, metricName string, labelName string, labelValue string) ([]IndexQuery, error)
 	GetChunksForSeries(bucket Bucket, seriesID []byte) ([]IndexQuery, error)
 	GetLabelNamesForSeries(bucket Bucket, seriesID []byte) ([]IndexQuery, error)
+	FilterReadQueries(queries []IndexQuery, shard *astmapper.ShardAnnotation) []IndexQuery
 }
 
 // original entries:
@@ -299,6 +309,10 @@ func (originalEntries) GetChunksForSeries(_ Bucket, _ []byte) ([]IndexQuery, err
 
 func (originalEntries) GetLabelNamesForSeries(_ Bucket, _ []byte) ([]IndexQuery, error) {
 	return nil, ErrNotSupported
+}
+
+func (originalEntries) FilterReadQueries(queries []IndexQuery, shard *astmapper.ShardAnnotation) []IndexQuery {
+	return queries
 }
 
 // v3Schema went to base64 encoded label values & a version ID
@@ -420,6 +434,10 @@ func (labelNameInHashKeyEntries) GetLabelNamesForSeries(_ Bucket, _ []byte) ([]I
 	return nil, ErrNotSupported
 }
 
+func (labelNameInHashKeyEntries) FilterReadQueries(queries []IndexQuery, shard *astmapper.ShardAnnotation) []IndexQuery {
+	return queries
+}
+
 // v5 schema is an extension of v4, with the chunk end time in the
 // range key to improve query latency.  However, it did it wrong
 // so the chunk end times are ignored.
@@ -492,6 +510,10 @@ func (v5Entries) GetChunksForSeries(_ Bucket, _ []byte) ([]IndexQuery, error) {
 
 func (v5Entries) GetLabelNamesForSeries(_ Bucket, _ []byte) ([]IndexQuery, error) {
 	return nil, ErrNotSupported
+}
+
+func (v5Entries) FilterReadQueries(queries []IndexQuery, shard *astmapper.ShardAnnotation) []IndexQuery {
+	return queries
 }
 
 // v6Entries fixes issues with v5 time encoding being wrong (see #337), and
@@ -574,9 +596,12 @@ func (v6Entries) GetLabelNamesForSeries(_ Bucket, _ []byte) ([]IndexQuery, error
 	return nil, ErrNotSupported
 }
 
-// v9Entries adds a layer of indirection between labels -> series -> chunks.
-type v9Entries struct {
+func (v6Entries) FilterReadQueries(queries []IndexQuery, shard *astmapper.ShardAnnotation) []IndexQuery {
+	return queries
 }
+
+// v9Entries adds a layer of indirection between labels -> series -> chunks.
+type v9Entries struct{}
 
 func (v9Entries) GetWriteEntries(bucket Bucket, metricName string, labels labels.Labels, chunkID string) ([]IndexEntry, error) {
 	return nil, ErrNotSupported
@@ -671,6 +696,10 @@ func (v9Entries) GetChunksForSeries(bucket Bucket, seriesID []byte) ([]IndexQuer
 
 func (v9Entries) GetLabelNamesForSeries(_ Bucket, _ []byte) ([]IndexQuery, error) {
 	return nil, ErrNotSupported
+}
+
+func (v9Entries) FilterReadQueries(queries []IndexQuery, shard *astmapper.ShardAnnotation) []IndexQuery {
+	return queries
 }
 
 // v10Entries builds on v9 by sharding index rows to reduce their size.
@@ -782,6 +811,22 @@ func (v10Entries) GetLabelNamesForSeries(_ Bucket, _ []byte) ([]IndexQuery, erro
 	return nil, ErrNotSupported
 }
 
+// FilterReadQueries will return only queries that match a certain shard
+func (v10Entries) FilterReadQueries(queries []IndexQuery, shard *astmapper.ShardAnnotation) (matches []IndexQuery) {
+	if shard == nil {
+		return queries
+	}
+
+	for _, query := range queries {
+		s := strings.Split(query.HashValue, ":")[0]
+		n, err := strconv.Atoi(s)
+		if err == nil && n == shard.Shard {
+			matches = append(matches, query)
+		}
+	}
+	return matches
+}
+
 // v11Entries builds on v10 but adds index entries for each series to store respective labels.
 type v11Entries struct {
 	v10Entries
@@ -845,4 +890,5 @@ func (v11Entries) GetLabelNamesForSeries(bucket Bucket, seriesID []byte) ([]Inde
 			HashValue: string(seriesID),
 		},
 	}, nil
+
 }

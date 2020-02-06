@@ -20,6 +20,7 @@ require (
 	github.com/coreos/go-systemd v0.0.0-20181012123002-c6f51f82210d // indirect
 	github.com/coreos/pkg v0.0.0-20180928190104-399ea9e2e55f // indirect
 	github.com/cznic/ql v1.2.0 // indirect
+	github.com/dimchansky/utfbom v1.1.0 // indirect
 	github.com/facette/natsort v0.0.0-20181210072756-2cd4dd1e2dcb
 	github.com/fluent/fluent-logger-golang v1.2.1 // indirect
 	github.com/fsouza/fake-gcs-server v1.3.0
@@ -63,6 +64,7 @@ require (
 	github.com/satori/go.uuid v1.2.0 // indirect
 	github.com/segmentio/fasthash v0.0.0-20180216231524-a72b379d632e
 	github.com/sercand/kuberesolver v2.1.0+incompatible // indirect
+	github.com/shopspring/decimal v0.0.0-20200105231215-408a2507e114 // indirect
 	github.com/stretchr/testify v1.4.0
 	github.com/thanos-io/thanos v0.7.0
 	github.com/tinylib/msgp v0.0.0-20161221055906-38a6f61a768d // indirect

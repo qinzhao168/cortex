@@ -1,10 +1,8 @@
 # Changelog
 
-## master / unreleased
-
-
 ## 0.6.1 / 2020-02-05
 
+* [ENHANCEMENT] Cassandra Authentication: added the `custom_authenticator` config option that allows users to authenticate with cassandra clusters using password authenticators that are not approved by default in [gocql](https://github.com/gocql/gocql/blob/81b8263d9fe526782a588ef94d3fa5c6148e5d67/conn.go#L27)
 * [BUGFIX] Fixed parsing of the WAL configuration when specified in the YAML config file. #2071
 
 ## 0.6.0 / 2020-01-28

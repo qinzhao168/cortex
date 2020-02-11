@@ -232,7 +232,7 @@ func (t *Cortex) stopDistributor() (err error) {
 }
 
 func (t *Cortex) initQuerier(cfg *Config) (err error) {
-	queryable, engine := querier.New(cfg.Querier, t.distributor, t.querierChunkStore)
+	queryable, engine := querier.New(cfg.Querier, t.distributor, querier.NewChunkStoreQueryable(cfg.Querier, t.querierChunkStore))
 	api := v1.NewAPI(
 		engine,
 		queryable,
@@ -431,7 +431,7 @@ func (t *Cortex) stopTableManager() error {
 
 func (t *Cortex) initRuler(cfg *Config) (err error) {
 	cfg.Ruler.Ring.ListenPort = cfg.Server.GRPCListenPort
-	queryable, engine := querier.New(cfg.Querier, t.distributor, t.querierChunkStore)
+	queryable, engine := querier.New(cfg.Querier, t.distributor, querier.NewChunkStoreQueryable(cfg.Querier, t.querierChunkStore))
 
 	t.ruler, err = ruler.NewRuler(cfg.Ruler, engine, queryable, t.distributor, prometheus.DefaultRegisterer, util.Logger)
 	if err != nil {

@@ -2,6 +2,7 @@
 
 ## master / unreleased
 
+* [BUGFIX] Fixed WAL metric names, added the `cortex_` prefix.
 
 ## 0.6.1 / 2020-02-05
 

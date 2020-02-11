@@ -96,7 +96,7 @@ type Ring struct {
 
 	mtx        sync.RWMutex
 	ringDesc   *Desc
-	ringTokens []TokenDesc
+	ringTokens TokenNavigator
 
 	memberOwnershipDesc *prometheus.Desc
 	numMembersDesc      *prometheus.Desc
@@ -170,12 +170,11 @@ func (r *Ring) loop(ctx context.Context) {
 		}
 
 		ringDesc := value.(*Desc)
-		ringTokens := ringDesc.getTokens()
-
+		navigator := ringDesc.GetNavigator()
 		r.mtx.Lock()
 		defer r.mtx.Unlock()
 		r.ringDesc = ringDesc
-		r.ringTokens = ringTokens
+		r.ringTokens = navigator
 		return true
 	})
 }
@@ -208,15 +207,28 @@ func (r *Ring) Get(key uint32, op Operation, buf []IngesterDesc) (ReplicationSet
 		distinctHosts[token.Ingester] = struct{}{}
 		ingester := r.ringDesc.Ingesters[token.Ingester]
 
-		// We do not want to Write to Ingesters that are not ACTIVE, but we do want
-		// to write the extra replica somewhere.  So we increase the size of the set
-		// of replicas for the key. This means we have to also increase the
-		// size of the replica set for read, but we can read from Leaving ingesters,
-		// so don't skip it in this case.
-		// NB dead ingester will be filtered later (by replication_strategy.go).
-		if op == Write && ingester.State != ACTIVE {
-			n++
-		} else if op == Read && (ingester.State != ACTIVE && ingester.State != LEAVING) {
+		// We don't want to operate on unhealthy ingesters, but we do want to operate
+		// on _some_ ingester. If the ingester is unhealthy, the replica set size
+		// is increased for the key. Dead ingesters will be filtered later by
+		// replication_strategy.go. Filtering later means that we can calculate
+		// a healthiness quorum.
+		if !ingester.Incremental {
+			if op == Write && ingester.State != ACTIVE {
+				n++
+			} else if op == Read && (ingester.State != ACTIVE && ingester.State != LEAVING) {
+				n++
+			}
+		} else {
+			// If the ingester is incrementally transferring tokens, its current
+			// state is just informational and is used to inform users what phase
+			// the transfer is in. Incremental transfers only disallow writing in
+			// the PENDING state.
+			if op == Write && ingester.State == PENDING {
+				n++
+			}
+		}
+
+		if !ingester.IsHealthyState(op) {
 			n++
 		}
 
@@ -282,7 +294,7 @@ func (r *Ring) Describe(ch chan<- *prometheus.Desc) {
 	ch <- r.numTokensDesc
 }
 
-func countTokens(ringDesc *Desc, tokens []TokenDesc) (map[string]uint32, map[string]uint32) {
+func countTokens(ringDesc *Desc, tokens TokenNavigator) (map[string]uint32, map[string]uint32) {
 	owned := map[string]uint32{}
 	numTokens := map[string]uint32{}
 	for i, token := range tokens {

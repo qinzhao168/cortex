@@ -51,7 +51,7 @@ func (l LazyQuerier) Select(params *storage.SelectParams, matchers ...*labels.Ma
 	go func() {
 		set, _, err := l.next.Select(params, matchers...)
 		if err != nil {
-			future <- errSeriesSet{err}
+			future <- ErrSeriesSet{err}
 		} else {
 			future <- set
 		}
@@ -86,21 +86,24 @@ func (l LazyQuerier) Get(ctx context.Context, userID string, from, through model
 	return store.Get(ctx, userID, from, through, matchers...)
 }
 
-// errSeriesSet implements storage.SeriesSet, just returning an error.
-type errSeriesSet struct {
-	err error
+// ErrSeriesSet implements storage.SeriesSet, just returning an error.
+type ErrSeriesSet struct {
+	Error error
 }
 
-func (errSeriesSet) Next() bool {
+// Next implements SeriesSet
+func (ErrSeriesSet) Next() bool {
 	return false
 }
 
-func (errSeriesSet) At() storage.Series {
+// At implements SeriesSet
+func (ErrSeriesSet) At() storage.Series {
 	return nil
 }
 
-func (e errSeriesSet) Err() error {
-	return e.err
+// Err implements SeriesSet
+func (e ErrSeriesSet) Err() error {
+	return e.Error
 }
 
 type lazySeriesSet struct {

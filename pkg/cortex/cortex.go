@@ -27,6 +27,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/ingester"
 	"github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/querier"
+	"github.com/cortexproject/cortex/pkg/querier/chunkstore"
 	"github.com/cortexproject/cortex/pkg/querier/frontend"
 	"github.com/cortexproject/cortex/pkg/querier/queryrange"
 	"github.com/cortexproject/cortex/pkg/ring"
@@ -183,7 +184,7 @@ type Cortex struct {
 
 	// The chunk store that the querier should use to query the long
 	// term storage. It depends on the storage engine used.
-	querierChunkStore querier.ChunkStore
+	querierChunkStore chunkstore.ChunkStore
 }
 
 // New makes a new Cortex.

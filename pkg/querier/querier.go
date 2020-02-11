@@ -76,9 +76,7 @@ func (cfg *Config) Validate() error {
 	return nil
 }
 
-// New builds a queryable and promql engine.
-func New(cfg Config, distributor Distributor, chunkStore chunkstore.ChunkStore) (storage.Queryable, *promql.Engine) {
-	iteratorFunc := mergeChunks
+func getChunksIteratorFunction(cfg Config) chunkIteratorFunc {
 	if cfg.BatchIterators {
 		return batch.NewChunkMergeIterator
 	} else if cfg.Iterators {
@@ -237,7 +235,7 @@ func (q querier) mergeSeriesSets(sets []storage.SeriesSet) storage.SeriesSet {
 			// If there is error, we better report it.
 			err := set.Err()
 			if err != nil {
-				otherSets = append(otherSets, errSeriesSet{err: err})
+				otherSets = append(otherSets, lazyquery.ErrSeriesSet{err})
 			}
 			continue
 		}

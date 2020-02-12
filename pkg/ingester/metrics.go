@@ -29,6 +29,7 @@ type ingesterMetrics struct {
 	memSeriesCreatedTotal *prometheus.CounterVec
 	memSeriesRemovedTotal *prometheus.CounterVec
 	walReplayDuration     prometheus.Gauge
+	walCorruptionsTotal   prometheus.Counter
 	unexpectedSeries      prometheus.Gauge
 	unexpectedSeriesTotal *prometheus.CounterVec
 	rejectedSamplesTotal  prometheus.Counter
@@ -89,6 +90,10 @@ func newIngesterMetrics(r prometheus.Registerer, registerMetricsConflictingWithT
 		walReplayDuration: prometheus.NewGauge(prometheus.GaugeOpts{
 			Name: "cortex_ingester_wal_replay_duration_seconds",
 			Help: "Time taken to replay the checkpoint and the WAL.",
+		}),
+		walCorruptionsTotal: prometheus.NewCounter(prometheus.CounterOpts{
+			Name: "cortex_ingester_wal_corruptions_total",
+			Help: "Total number of WAL corruptions encountered.",
 		}),
 		unexpectedSeries: prometheus.NewGauge(prometheus.GaugeOpts{
 			Namespace: "cortex",

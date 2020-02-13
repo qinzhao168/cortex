@@ -235,7 +235,7 @@ func (q querier) mergeSeriesSets(sets []storage.SeriesSet) storage.SeriesSet {
 			// If there is error, we better report it.
 			err := set.Err()
 			if err != nil {
-				otherSets = append(otherSets, lazyquery.ErrSeriesSet{err})
+				otherSets = append(otherSets, lazyquery.ErrSeriesSet{Error: err})
 			}
 			continue
 		}

@@ -14,7 +14,7 @@ import (
 )
 
 func TestAlertmanager(t *testing.T) {
-	s, err := e2e.NewScenario()
+	s, err := e2e.NewScenario(networkName)
 	require.NoError(t, err)
 	defer s.Close()
 
@@ -27,12 +27,11 @@ func TestAlertmanager(t *testing.T) {
 		os.ModePerm),
 	)
 
-	// Start Cortex components
-	require.NoError(t, s.StartService(e2ecortex.NewAlertmanager("alertmanager", AlertmanagerConfigs, "")))
-	require.NoError(t, s.WaitReady("alertmanager"))
-	require.NoError(t, s.Service("alertmanager").WaitMetric("cortex_alertmanager_configs", 1))
+	alertmanager := e2ecortex.NewAlertmanager("alertmanager", AlertmanagerConfigs, "")
+	require.NoError(t, s.StartAndWaitReady(alertmanager))
+	require.NoError(t, alertmanager.WaitSumMetric("cortex_alertmanager_configs", 1))
 
-	c, err := e2ecortex.NewClient("", "", s.Endpoint("alertmanager", 80), "user-1")
+	c, err := e2ecortex.NewClient("", "", alertmanager.Endpoint(80), "user-1")
 	require.NoError(t, err)
 
 	cfg, err := c.GetAlertmanagerConfig(context.Background())
@@ -45,5 +44,5 @@ func TestAlertmanager(t *testing.T) {
 	require.Equal(t, "example_groupby", cfg.Route.GroupByStr[0])
 	require.Len(t, cfg.Receivers, 1)
 	require.Equal(t, "example_receiver", cfg.Receivers[0].Name)
-	require.NoError(t, s.StopService("alertmanager"))
+	require.NoError(t, s.Stop(alertmanager))
 }

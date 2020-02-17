@@ -104,22 +104,20 @@ func NewTableManager(name string, flags map[string]string, image string) *e2e.HT
 	)
 }
 
-func NewAlertmanager(name string, flags map[string]string, image string) *e2e.Service {
+func NewAlertmanager(name string, flags map[string]string, image string) *e2e.HTTPService {
 	if image == "" {
 		image = GetDefaultImage()
 	}
 
-	return e2e.NewService(
+	return e2e.NewHTTPService(
 		name,
 		image,
-		e2e.NetworkName,
-		[]int{80},
-		nil,
 		e2e.NewCommandWithoutEntrypoint("cortex", e2e.BuildArgs(e2e.MergeFlags(map[string]string{
 			"-target":    "alertmanager",
 			"-log.level": "warn",
 		}, flags))...),
 		// The table-manager doesn't expose a readiness probe, so we just check if the / returns 404
 		e2e.NewReadinessProbe(80, "/", 404),
+		80,
 	)
 }

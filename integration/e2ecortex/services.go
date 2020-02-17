@@ -116,7 +116,7 @@ func NewAlertmanager(name string, flags map[string]string, image string) *e2e.HT
 			"-target":    "alertmanager",
 			"-log.level": "warn",
 		}, flags))...),
-		// The table-manager doesn't expose a readiness probe, so we just check if the / returns 404
+		// The alertmanager doesn't expose a readiness probe, so we just check if the / returns 404
 		e2e.NewReadinessProbe(80, "/", 404),
 		80,
 	)

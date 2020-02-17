@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/pkg/errors"
 	"github.com/prometheus/alertmanager/config"
 
 	"github.com/cortexproject/cortex/pkg/alertmanager/alerts"
@@ -38,7 +39,7 @@ func (f *Store) ListAlertConfigs(ctx context.Context) (map[string]alerts.AlertCo
 	configs := map[string]alerts.AlertConfigDesc{}
 	err := filepath.Walk(f.cfg.Path, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
-			return err
+			return errors.Wrap(err, "unable to walk file path")
 		}
 
 		// Ignore files that are directories or not yaml files
@@ -47,18 +48,16 @@ func (f *Store) ListAlertConfigs(ctx context.Context) (map[string]alerts.AlertCo
 			return nil
 		}
 
-		fp := filepath.Join(f.cfg.Path, info.Name())
-
 		// Ensure the file is a valid Alertmanager Config.
-		_, err = config.LoadFile(fp)
+		_, err = config.LoadFile(path)
 		if err != nil {
-			return err
+			return errors.Wrap(err, "unable to load file "+path)
 		}
 
 		// Load the file to be returned by the store.
-		content, err := ioutil.ReadFile(fp)
+		content, err := ioutil.ReadFile(path)
 		if err != nil {
-			return err
+			return errors.Wrap(err, "unable to read file "+path)
 		}
 
 		// The file name must correspond to the user tenant ID

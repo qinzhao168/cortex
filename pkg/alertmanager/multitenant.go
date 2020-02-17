@@ -279,7 +279,6 @@ func (am *MultitenantAlertmanager) updateConfigs() error {
 func (am *MultitenantAlertmanager) poll() (map[string]alerts.AlertConfigDesc, error) {
 	cfgs, err := am.store.ListAlertConfigs(context.Background())
 	if err != nil {
-		level.Warn(am.logger).Log("msg", "configs alert store poll failed", "err", err)
 		return nil, err
 	}
 	return cfgs, nil
@@ -294,7 +293,6 @@ func (am *MultitenantAlertmanager) syncConfigs(cfgs map[string]alerts.AlertConfi
 		if err != nil {
 			invalid++
 			level.Warn(am.logger).Log("msg", "error applying config", "err", err)
-			continue
 		}
 	}
 
@@ -302,10 +300,11 @@ func (am *MultitenantAlertmanager) syncConfigs(cfgs map[string]alerts.AlertConfi
 	defer am.alertmanagersMtx.Unlock()
 	for user, userAM := range am.alertmanagers {
 		if _, exists := cfgs[user]; !exists {
+			level.Info(am.logger).Log("msg", "deleting per-tenant alertmanager", "user", user)
 			userAM.Stop()
 			delete(am.alertmanagers, user)
 			delete(am.cfgs, user)
-			level.Info(am.logger).Log("msg", "deleting alertmanager", "user", user)
+			level.Info(am.logger).Log("msg", "deleted per-tenant alertmanager", "user", user)
 		}
 	}
 	totalConfigs.WithLabelValues("invalid").Set(float64(invalid))
@@ -403,7 +402,7 @@ func (am *MultitenantAlertmanager) setConfig(cfg alerts.AlertConfigDesc) error {
 
 	// If no Alertmanager instance exists for this user yet, start one.
 	if !hasExisting {
-		level.Debug(am.logger).Log("msg", "initializing new alertmanager tenant", "user", cfg.User)
+		level.Debug(am.logger).Log("msg", "initializing new per-tenant alertmanager", "user", cfg.User)
 		newAM, err := am.newAlertmanager(cfg.User, userAmConfig)
 		if err != nil {
 			return err
@@ -412,7 +411,7 @@ func (am *MultitenantAlertmanager) setConfig(cfg alerts.AlertConfigDesc) error {
 		am.alertmanagers[cfg.User] = newAM
 		am.alertmanagersMtx.Unlock()
 	} else if am.cfgs[cfg.User].RawConfig != cfg.RawConfig || hasTemplateChanges {
-		level.Info(am.logger).Log("msg", "updating new alertmanager tenant", "user", cfg.User)
+		level.Info(am.logger).Log("msg", "updating new per-tenant alertmanager", "user", cfg.User)
 		// If the config changed, apply the new one.
 		err := existing.ApplyConfig(cfg.User, userAmConfig)
 		if err != nil {

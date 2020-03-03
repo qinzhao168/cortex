@@ -136,7 +136,9 @@ func TestCheckpointRepair(t *testing.T) {
 		w, ok = ing.wal.(*walWrapper)
 		require.True(t, ok)
 		// defer in case we hit an error though we explicitly close it later.
-		defer services.StopAndAwaitTerminated(context.Background(), ing)
+		defer func() {
+			require.NoError(t, services.StopAndAwaitTerminated(context.Background(), ing))
+		}()
 
 		if numCheckpoints > 0 {
 			require.Equal(t, 1.0, prom_testutil.ToFloat64(ing.metrics.walCorruptionsTotal))

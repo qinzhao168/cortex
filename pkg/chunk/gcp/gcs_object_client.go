@@ -128,7 +128,13 @@ func (s *GCSObjectClient) List(ctx context.Context, prefix string) ([]chunk.Stor
 	return storageObjects, nil
 }
 
-func (s *GCSObjectClient) DeleteObject(ctx context.Context, chunkID string) error {
-	// ToDo: implement this to support deleting chunks from GCS
-	return chunk.ErrMethodNotImplemented
+// DeleteObject deletes the specified object from the configured GCS bucket
+func (s *GCSObjectClient) DeleteObject(ctx context.Context, objectKey string) error {
+	err := s.bucket.Object(objectKey).Delete(ctx)
+
+	if err == storage.ErrObjectNotExist {
+		return chunk.ErrStorageObjectNotFound // Ensure a generic not found error is returned
+	}
+
+	return err
 }

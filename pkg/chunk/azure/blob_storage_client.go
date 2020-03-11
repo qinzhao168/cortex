@@ -184,7 +184,18 @@ func (b *BlobStorage) List(ctx context.Context, prefix string) ([]chunk.StorageO
 	return storageObjects, nil
 }
 
-func (b *BlobStorage) DeleteObject(ctx context.Context, chunkID string) error {
-	// ToDo: implement this to support deleting chunks from Azure BlobStorage
-	return chunk.ErrMethodNotImplemented
+func (b *BlobStorage) DeleteObject(ctx context.Context, objectKey string) error {
+	blockBlobURL, err := b.getBlobURL(objectKey)
+	if err != nil {
+		return err
+	}
+
+	response, err := blockBlobURL.Delete()
+
+	// Return not found if object does not exist
+	if response.ErrorCode() == azblob.StorageErrorCodeBlobNotFound {
+		return chunk.ErrStorageObjectNotFound
+	}
+
+	return err
 }

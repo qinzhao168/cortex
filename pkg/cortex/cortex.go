@@ -231,24 +231,30 @@ func New(cfg Config) (*Cortex, error) {
 
 func (t *Cortex) setupAuthMiddleware(cfg *Config) {
 	if cfg.AuthEnabled {
-		cfg.Server.GRPCMiddleware = []grpc.UnaryServerInterceptor{
-			middleware.ServerUserHeaderInterceptor,
+		if cfg.Server.GRPCMiddleware == nil || len(cfg.Server.GRPCMiddleware) == 0 {
+			cfg.Server.GRPCMiddleware = []grpc.UnaryServerInterceptor{
+				middleware.ServerUserHeaderInterceptor,
+			}
 		}
-		cfg.Server.GRPCStreamMiddleware = []grpc.StreamServerInterceptor{
-			func(srv interface{}, ss grpc.ServerStream, info *grpc.StreamServerInfo, handler grpc.StreamHandler) error {
-				switch info.FullMethod {
-				// Don't check auth header on TransferChunks, as we weren't originally
-				// sending it and this could cause transfers to fail on update.
-				//
-				// Also don't check auth /frontend.Frontend/Process, as this handles
-				// queries for multiple users.
-				case "/cortex.Ingester/TransferChunks", "/frontend.Frontend/Process":
-					return handler(srv, ss)
-				default:
-					return middleware.StreamServerUserHeaderInterceptor(srv, ss, info, handler)
-				}
-			},
+
+		if cfg.Server.GRPCStreamMiddleware == nil || len(cfg.Server.GRPCStreamMiddleware) == 0 {
+			cfg.Server.GRPCStreamMiddleware = []grpc.StreamServerInterceptor{
+				func(srv interface{}, ss grpc.ServerStream, info *grpc.StreamServerInfo, handler grpc.StreamHandler) error {
+					switch info.FullMethod {
+					// Don't check auth header on TransferChunks, as we weren't originally
+					// sending it and this could cause transfers to fail on update.
+					//
+					// Also don't check auth /frontend.Frontend/Process, as this handles
+					// queries for multiple users.
+					case "/cortex.Ingester/TransferChunks", "/frontend.Frontend/Process":
+						return handler(srv, ss)
+					default:
+						return middleware.StreamServerUserHeaderInterceptor(srv, ss, info, handler)
+					}
+				},
+			}
 		}
+
 		t.httpAuthMiddleware = middleware.AuthenticateUser
 	} else {
 		cfg.Server.GRPCMiddleware = []grpc.UnaryServerInterceptor{
@@ -401,6 +407,16 @@ func (t *Cortex) readyHandler(sm *services.Manager) http.HandlerFunc {
 		}
 		w.WriteHeader(http.StatusNoContent)
 	}
+}
+
+// GetServer gives the caller access to the underlying http server
+func (t *Cortex) GetServer() *server.Server {
+	return t.server
+}
+
+// SetHTTPAuthMiddleware allows for the auth middleware injected into requests to be overridden
+func (t *Cortex) SetHTTPAuthMiddleware(m middleware.Interface) {
+	t.httpAuthMiddleware = m
 }
 
 // listDeps recursively gets a list of dependencies for a passed moduleName

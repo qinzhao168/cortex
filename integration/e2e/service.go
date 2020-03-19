@@ -1,18 +1,19 @@
 package e2e
 
 import (
+	"bytes"
 	"context"
 	"fmt"
-	"io"
 	"io/ioutil"
 	"math"
-	"os"
+	"net"
 	"os/exec"
 	"regexp"
 	"strconv"
 	"strings"
 	"time"
 
+	"github.com/go-kit/kit/log"
 	"github.com/pkg/errors"
 	io_prometheus_client "github.com/prometheus/client_model/go"
 	"github.com/prometheus/common/expfmt"
@@ -37,7 +38,7 @@ type ConcreteService struct {
 	env          map[string]string
 	user         string
 	command      *Command
-	readiness    *ReadinessProbe
+	readiness    ReadinessProbe
 
 	// Maps container ports to dynamically binded local ports.
 	networkPortsContainerToLocal map[int]int
@@ -54,7 +55,7 @@ func NewConcreteService(
 	name string,
 	image string,
 	command *Command,
-	readiness *ReadinessProbe,
+	readiness ReadinessProbe,
 	networkPorts ...int,
 ) *ConcreteService {
 	return &ConcreteService{
@@ -103,8 +104,8 @@ func (s *ConcreteService) Start(networkName, sharedDir string) (err error) {
 	}()
 
 	cmd := exec.Command("docker", s.buildDockerRunArgs(networkName, sharedDir)...)
-	cmd.Stdout = &LinePrefixWriter{prefix: s.name + ": ", wrapped: os.Stdout}
-	cmd.Stderr = &LinePrefixWriter{prefix: s.name + ": ", wrapped: os.Stderr}
+	cmd.Stdout = &LinePrefixLogger{prefix: s.name + ": ", logger: logger}
+	cmd.Stderr = &LinePrefixLogger{prefix: s.name + ": ", logger: logger}
 	if err = cmd.Start(); err != nil {
 		return err
 	}
@@ -141,7 +142,7 @@ func (s *ConcreteService) Start(networkName, sharedDir string) (err error) {
 		}
 		s.networkPortsContainerToLocal[containerPort] = localPort
 	}
-	fmt.Println("Ports for container:", s.containerName(), "Mapping:", s.networkPortsContainerToLocal)
+	logger.Log("Ports for container:", s.containerName(), "Mapping:", s.networkPortsContainerToLocal)
 	return nil
 }
 
@@ -150,10 +151,10 @@ func (s *ConcreteService) Stop() error {
 		return nil
 	}
 
-	fmt.Println("Stopping", s.name)
+	logger.Log("Stopping", s.name)
 
 	if out, err := RunCommandAndGetOutput("docker", "stop", "--time=30", s.containerName()); err != nil {
-		fmt.Println(string(out))
+		logger.Log(string(out))
 		return err
 	}
 	s.usedNetworkName = ""
@@ -166,10 +167,10 @@ func (s *ConcreteService) Kill() error {
 		return nil
 	}
 
-	fmt.Println("Killing", s.name)
+	logger.Log("Killing", s.name)
 
 	if out, err := RunCommandAndGetOutput("docker", "stop", "--time=0", s.containerName()); err != nil {
-		fmt.Println(string(out))
+		logger.Log(string(out))
 		return err
 	}
 	s.usedNetworkName = ""
@@ -218,7 +219,7 @@ func (s *ConcreteService) NetworkEndpointFor(networkName string, port int) strin
 	return fmt.Sprintf("%s:%d", containerName(networkName, s.name), port)
 }
 
-func (s *ConcreteService) SetReadinessProbe(probe *ReadinessProbe) {
+func (s *ConcreteService) SetReadinessProbe(probe ReadinessProbe) {
 	s.readiness = probe
 }
 
@@ -232,13 +233,7 @@ func (s *ConcreteService) Ready() error {
 		return nil
 	}
 
-	// Map the container port to the local port
-	localPort, ok := s.networkPortsContainerToLocal[s.readiness.port]
-	if !ok {
-		return fmt.Errorf("unknown port %d configured in the readiness probe", s.readiness.port)
-	}
-
-	return s.readiness.Ready(localPort)
+	return s.readiness.Ready(s)
 }
 
 func containerName(netName string, name string) string {
@@ -255,7 +250,12 @@ func (s *ConcreteService) WaitStarted() (err error) {
 	}
 
 	for s.retryBackoff.Reset(); s.retryBackoff.Ongoing(); {
-		err = exec.Command("docker", "inspect", s.containerName()).Run()
+		// Enforce a timeout on the command execution because we've seen some flaky tests
+		// stuck here.
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+
+		err = exec.CommandContext(ctx, "docker", "inspect", s.containerName()).Run()
 		if err == nil {
 			return nil
 		}
@@ -303,14 +303,35 @@ func (s *ConcreteService) buildDockerRunArgs(networkName, sharedDir string) []st
 	}
 
 	// Disable entrypoint if required
-	if s.command.entrypointDisabled {
+	if s.command != nil && s.command.entrypointDisabled {
 		args = append(args, "--entrypoint", "")
 	}
 
 	args = append(args, s.image)
-	args = append(args, s.command.cmd)
-	args = append(args, s.command.args...)
+
+	if s.command != nil {
+		args = append(args, s.command.cmd)
+		args = append(args, s.command.args...)
+	}
+
 	return args
+}
+
+func (s *ConcreteService) Exec(command *Command) (string, error) {
+	args := []string{"exec", s.containerName()}
+	args = append(args, command.cmd)
+	args = append(args, command.args...)
+
+	cmd := exec.Command("docker", args...)
+	var stdout bytes.Buffer
+	cmd.Stdout = &stdout
+
+	err := cmd.Run()
+	if err != nil {
+		return "", err
+	}
+
+	return stdout.String(), nil
 }
 
 type Command struct {
@@ -334,22 +355,34 @@ func NewCommandWithoutEntrypoint(cmd string, args ...string) *Command {
 	}
 }
 
-type ReadinessProbe struct {
+type ReadinessProbe interface {
+	Ready(service *ConcreteService) (err error)
+}
+
+// HTTPReadinessProbe checks readiness by making HTTP call and checking for expected HTTP status code
+type HTTPReadinessProbe struct {
 	port           int
 	path           string
 	expectedStatus int
 }
 
-func NewReadinessProbe(port int, path string, expectedStatus int) *ReadinessProbe {
-	return &ReadinessProbe{
+func NewHTTPReadinessProbe(port int, path string, expectedStatus int) *HTTPReadinessProbe {
+	return &HTTPReadinessProbe{
 		port:           port,
 		path:           path,
 		expectedStatus: expectedStatus,
 	}
 }
 
-func (p *ReadinessProbe) Ready(localPort int) (err error) {
-	res, err := GetRequest(fmt.Sprintf("http://localhost:%d%s", localPort, p.path))
+func (p *HTTPReadinessProbe) Ready(service *ConcreteService) (err error) {
+	endpoint := service.Endpoint(p.port)
+	if endpoint == "" {
+		return fmt.Errorf("cannot get service endpoint for port %d", p.port)
+	} else if endpoint == "stopped" {
+		return errors.New("service has stopped")
+	}
+
+	res, err := GetRequest("http://" + endpoint + p.path)
 	if err != nil {
 		return err
 	}
@@ -363,12 +396,53 @@ func (p *ReadinessProbe) Ready(localPort int) (err error) {
 	return fmt.Errorf("got no expected status code: %v, expected: %v", res.StatusCode, p.expectedStatus)
 }
 
-type LinePrefixWriter struct {
-	prefix  string
-	wrapped io.Writer
+// TCPReadinessProbe checks readiness by ensure a TCP connection can be established.
+type TCPReadinessProbe struct {
+	port int
 }
 
-func (w *LinePrefixWriter) Write(p []byte) (n int, err error) {
+func NewTCPReadinessProbe(port int) *TCPReadinessProbe {
+	return &TCPReadinessProbe{
+		port: port,
+	}
+}
+
+func (p *TCPReadinessProbe) Ready(service *ConcreteService) (err error) {
+	endpoint := service.Endpoint(p.port)
+	if endpoint == "" {
+		return fmt.Errorf("cannot get service endpoint for port %d", p.port)
+	} else if endpoint == "stopped" {
+		return errors.New("service has stopped")
+	}
+
+	conn, err := net.DialTimeout("tcp", endpoint, time.Second)
+	if err != nil {
+		return err
+	}
+
+	return conn.Close()
+}
+
+// CmdReadinessProbe checks readiness by `Exec`ing a command (within container) which returns 0 to consider status being ready
+type CmdReadinessProbe struct {
+	cmd *Command
+}
+
+func NewCmdReadinessProbe(cmd *Command) *CmdReadinessProbe {
+	return &CmdReadinessProbe{cmd: cmd}
+}
+
+func (p *CmdReadinessProbe) Ready(service *ConcreteService) error {
+	_, err := service.Exec(p.cmd)
+	return err
+}
+
+type LinePrefixLogger struct {
+	prefix string
+	logger log.Logger
+}
+
+func (w *LinePrefixLogger) Write(p []byte) (n int, err error) {
 	for _, line := range strings.Split(string(p), "\n") {
 		// Skip empty lines
 		line = strings.TrimSpace(line)
@@ -377,8 +451,7 @@ func (w *LinePrefixWriter) Write(p []byte) (n int, err error) {
 		}
 
 		// Write the prefix + line to the wrapped writer
-		_, err := w.wrapped.Write([]byte(w.prefix + line + "\n"))
-		if err != nil {
+		if err := w.logger.Log(w.prefix + line); err != nil {
 			return 0, err
 		}
 	}
@@ -398,7 +471,7 @@ func NewHTTPService(
 	name string,
 	image string,
 	command *Command,
-	readiness *ReadinessProbe,
+	readiness ReadinessProbe,
 	httpPort int,
 	otherPorts ...int,
 ) *HTTPService {

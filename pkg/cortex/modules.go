@@ -53,6 +53,7 @@ const (
 	Ring                ModuleName = "ring"
 	RuntimeConfig       ModuleName = "runtime-config"
 	Overrides           ModuleName = "overrides"
+	Generator           ModuleName = "generator"
 	Server              ModuleName = "server"
 	Distributor         ModuleName = "distributor"
 	Ingester            ModuleName = "ingester"
@@ -632,6 +633,11 @@ var modules = map[ModuleName]module{
 
 	Ruler: {
 		deps:           []ModuleName{Distributor, Store, StoreQueryable},
+		wrappedService: (*Cortex).initRuler,
+	},
+
+	Generator: {
+		deps:           []ModuleName{Store, StoreQueryable},
 		wrappedService: (*Cortex).initRuler,
 	},
 

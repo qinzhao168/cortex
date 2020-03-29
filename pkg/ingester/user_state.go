@@ -35,7 +35,7 @@ type userState struct {
 	limiter             *SeriesLimiter
 	userID              string
 	fpLocker            *fingerprintLocker
-	fpToSeries          *seriesMap
+	fpToSeries          *SeriesMap
 	mapper              *fpMapper
 	index               *index.InvertedIndex
 	ingestedAPISamples  *ewmaRate
@@ -84,7 +84,7 @@ func (us *userStates) cp() map[string]*userState {
 func (us *userStates) gc() {
 	us.states.Range(func(key, value interface{}) bool {
 		state := value.(*userState)
-		if state.fpToSeries.length() == 0 {
+		if state.fpToSeries.Length() == 0 {
 			us.states.Delete(key)
 		}
 		return true
@@ -125,7 +125,7 @@ func (us *userStates) getOrCreate(userID string) *userState {
 		state = &userState{
 			userID:              userID,
 			limiter:             us.limiter,
-			fpToSeries:          newSeriesMap(),
+			fpToSeries:          NewSeriesMap(),
 			fpLocker:            newFingerprintLocker(16 * 1024),
 			index:               index.New(),
 			ingestedAPISamples:  newEWMARate(0.2, us.cfg.RateUpdatePeriod),
@@ -160,7 +160,7 @@ func (us *userStates) getViaContext(ctx context.Context) (*userState, bool, erro
 
 // NOTE: memory for `labels` is unsafe; anything retained beyond the
 // life of this function must be copied
-func (us *userStates) getOrCreateSeries(ctx context.Context, userID string, labels []client.LabelAdapter, record *Record) (*userState, model.Fingerprint, *memorySeries, error) {
+func (us *userStates) getOrCreateSeries(ctx context.Context, userID string, labels []client.LabelAdapter, record *Record) (*userState, model.Fingerprint, *MemorySeries, error) {
 	state := us.getOrCreate(userID)
 	// WARNING: `err` may have a reference to unsafe memory in `labels`
 	fp, series, err := state.getSeries(labels, record)
@@ -169,7 +169,7 @@ func (us *userStates) getOrCreateSeries(ctx context.Context, userID string, labe
 
 // NOTE: memory for `metric` is unsafe; anything retained beyond the
 // life of this function must be copied
-func (u *userState) getSeries(metric labelPairs, record *Record) (model.Fingerprint, *memorySeries, error) {
+func (u *userState) getSeries(metric labelPairs, record *Record) (model.Fingerprint, *MemorySeries, error) {
 	rawFP := client.FastFingerprint(metric)
 	u.fpLocker.Lock(rawFP)
 	fp := u.mapper.mapFP(rawFP, metric)
@@ -178,7 +178,7 @@ func (u *userState) getSeries(metric labelPairs, record *Record) (model.Fingerpr
 		u.fpLocker.Lock(fp)
 	}
 
-	series, ok := u.fpToSeries.get(fp)
+	series, ok := u.fpToSeries.Get(fp)
 	if ok {
 		return fp, series, nil
 	}
@@ -192,7 +192,7 @@ func (u *userState) getSeries(metric labelPairs, record *Record) (model.Fingerpr
 	return fp, series, nil
 }
 
-func (u *userState) createSeriesWithFingerprint(fp model.Fingerprint, metric labelPairs, record *Record, recovery bool) (*memorySeries, error) {
+func (u *userState) createSeriesWithFingerprint(fp model.Fingerprint, metric labelPairs, record *Record, recovery bool) (*MemorySeries, error) {
 	// There's theoretically a relatively harmless race here if multiple
 	// goroutines get the length of the series map at the same time, then
 	// all proceed to add a new series. This is likely not worth addressing,
@@ -200,7 +200,7 @@ func (u *userState) createSeriesWithFingerprint(fp model.Fingerprint, metric lab
 	// serially), and the overshoot in allowed series would be minimal.
 
 	if !recovery {
-		if err := u.limiter.AssertMaxSeriesPerUser(u.userID, u.fpToSeries.length()); err != nil {
+		if err := u.limiter.AssertMaxSeriesPerUser(u.userID, u.fpToSeries.Length()); err != nil {
 			return nil, makeLimitError(perUserSeriesLimit, err)
 		}
 	}
@@ -230,8 +230,8 @@ func (u *userState) createSeriesWithFingerprint(fp model.Fingerprint, metric lab
 	}
 
 	labels := u.index.Add(metric, fp) // Add() returns 'interned' values so the original labels are not retained
-	series := newMemorySeries(labels, u.createdChunks)
-	u.fpToSeries.put(fp, series)
+	series := NewMemorySeries(labels, u.createdChunks)
+	u.fpToSeries.Put(fp, series)
 
 	return series, nil
 }
@@ -251,7 +251,7 @@ func (u *userState) canAddSeriesFor(metric string) error {
 }
 
 func (u *userState) removeSeries(fp model.Fingerprint, metric labels.Labels) {
-	u.fpToSeries.del(fp)
+	u.fpToSeries.Del(fp)
 	u.index.Delete(labels.Labels(metric), fp)
 
 	metricName := metric.Get(model.MetricNameLabel)
@@ -283,7 +283,7 @@ func (u *userState) removeSeries(fp model.Fingerprint, metric labels.Labels) {
 //   with no locks held, and is intended to be used by the caller to send the
 //   built batches.
 func (u *userState) forSeriesMatching(ctx context.Context, allMatchers []*labels.Matcher,
-	add func(context.Context, model.Fingerprint, *memorySeries) error,
+	add func(context.Context, model.Fingerprint, *MemorySeries) error,
 	send func(context.Context) error, batchSize int,
 ) error {
 	log, ctx := spanlogger.New(ctx, "forSeriesMatching")
@@ -306,7 +306,7 @@ outer:
 		}
 
 		u.fpLocker.Lock(fp)
-		series, ok := u.fpToSeries.get(fp)
+		series, ok := u.fpToSeries.Get(fp)
 		if !ok {
 			u.fpLocker.Unlock(fp)
 			continue

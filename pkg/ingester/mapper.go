@@ -30,12 +30,12 @@ type fpMapper struct {
 	mtx      sync.RWMutex // Protects mappings.
 	mappings fpMappings
 
-	fpToSeries *seriesMap
+	fpToSeries *SeriesMap
 }
 
 // newFPMapper loads the collision map from the persistence and
 // returns an fpMapper ready to use.
-func newFPMapper(fpToSeries *seriesMap) *fpMapper {
+func newFPMapper(fpToSeries *SeriesMap) *fpMapper {
 	return &fpMapper{
 		fpToSeries: fpToSeries,
 		mappings:   map[model.Fingerprint]map[string]model.Fingerprint{},
@@ -57,7 +57,7 @@ func (m *fpMapper) mapFP(fp model.Fingerprint, metric labelPairs) model.Fingerpr
 
 	// Then check the most likely case: This fp belongs to a series that is
 	// already in memory.
-	s, ok := m.fpToSeries.get(fp)
+	s, ok := m.fpToSeries.Get(fp)
 	if ok {
 		// FP exists in memory, but is it for the same metric?
 		if metric.equal(s.metric) {

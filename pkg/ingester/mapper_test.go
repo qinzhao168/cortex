@@ -56,7 +56,7 @@ func (a labelPairs) copyValuesAndSort() labels.Labels {
 }
 
 func TestFPMapper(t *testing.T) {
-	sm := newSeriesMap()
+	sm := NewSeriesMap()
 
 	mapper := newFPMapper(sm)
 
@@ -66,12 +66,12 @@ func TestFPMapper(t *testing.T) {
 
 	// cm11 is in sm. Adding cm11 should do nothing. Mapping cm12 should resolve
 	// the collision.
-	sm.put(fp1, &memorySeries{metric: cm11.copyValuesAndSort()})
+	sm.Put(fp1, &MemorySeries{metric: cm11.copyValuesAndSort()})
 	assertFingerprintEqual(t, mapper.mapFP(fp1, cm11), fp1)
 	assertFingerprintEqual(t, mapper.mapFP(fp1, cm12), model.Fingerprint(1))
 
 	// The mapped cm12 is added to sm, too. That should not change the outcome.
-	sm.put(model.Fingerprint(1), &memorySeries{metric: cm12.copyValuesAndSort()})
+	sm.Put(model.Fingerprint(1), &MemorySeries{metric: cm12.copyValuesAndSort()})
 	assertFingerprintEqual(t, mapper.mapFP(fp1, cm11), fp1)
 	assertFingerprintEqual(t, mapper.mapFP(fp1, cm12), model.Fingerprint(1))
 
@@ -80,27 +80,27 @@ func TestFPMapper(t *testing.T) {
 	assertFingerprintEqual(t, mapper.mapFP(fp1, cm13), model.Fingerprint(2))
 
 	// Add cm13 to sm. Should not change anything.
-	sm.put(model.Fingerprint(2), &memorySeries{metric: cm13.copyValuesAndSort()})
+	sm.Put(model.Fingerprint(2), &MemorySeries{metric: cm13.copyValuesAndSort()})
 	assertFingerprintEqual(t, mapper.mapFP(fp1, cm11), fp1)
 	assertFingerprintEqual(t, mapper.mapFP(fp1, cm12), model.Fingerprint(1))
 	assertFingerprintEqual(t, mapper.mapFP(fp1, cm13), model.Fingerprint(2))
 
 	// Now add cm21 and cm22 in the same way, checking the mapped FPs.
 	assertFingerprintEqual(t, mapper.mapFP(fp2, cm21), fp2)
-	sm.put(fp2, &memorySeries{metric: cm21.copyValuesAndSort()})
+	sm.Put(fp2, &MemorySeries{metric: cm21.copyValuesAndSort()})
 	assertFingerprintEqual(t, mapper.mapFP(fp2, cm21), fp2)
 	assertFingerprintEqual(t, mapper.mapFP(fp2, cm22), model.Fingerprint(3))
-	sm.put(model.Fingerprint(3), &memorySeries{metric: cm22.copyValuesAndSort()})
+	sm.Put(model.Fingerprint(3), &MemorySeries{metric: cm22.copyValuesAndSort()})
 	assertFingerprintEqual(t, mapper.mapFP(fp2, cm21), fp2)
 	assertFingerprintEqual(t, mapper.mapFP(fp2, cm22), model.Fingerprint(3))
 
 	// Map cm31, resulting in a mapping straight away.
 	assertFingerprintEqual(t, mapper.mapFP(fp3, cm31), model.Fingerprint(4))
-	sm.put(model.Fingerprint(4), &memorySeries{metric: cm31.copyValuesAndSort()})
+	sm.Put(model.Fingerprint(4), &MemorySeries{metric: cm31.copyValuesAndSort()})
 
 	// Map cm32, which is now mapped for two reasons...
 	assertFingerprintEqual(t, mapper.mapFP(fp3, cm32), model.Fingerprint(5))
-	sm.put(model.Fingerprint(5), &memorySeries{metric: cm32.copyValuesAndSort()})
+	sm.Put(model.Fingerprint(5), &MemorySeries{metric: cm32.copyValuesAndSort()})
 
 	// Now check ALL the mappings, just to be sure.
 	assertFingerprintEqual(t, mapper.mapFP(fp1, cm11), fp1)
@@ -113,9 +113,9 @@ func TestFPMapper(t *testing.T) {
 
 	// Remove all the fingerprints from sm, which should change nothing, as
 	// the existing mappings stay and should be detected.
-	sm.del(fp1)
-	sm.del(fp2)
-	sm.del(fp3)
+	sm.Del(fp1)
+	sm.Del(fp2)
+	sm.Del(fp3)
 	assertFingerprintEqual(t, mapper.mapFP(fp1, cm11), fp1)
 	assertFingerprintEqual(t, mapper.mapFP(fp1, cm12), model.Fingerprint(1))
 	assertFingerprintEqual(t, mapper.mapFP(fp1, cm13), model.Fingerprint(2))

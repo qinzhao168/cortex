@@ -446,12 +446,12 @@ func (i *Ingester) append(ctx context.Context, userID string, labels labelPairs,
 		startOfCycle := timestamp.Add(-(timestamp.Sub(model.Time(0)) % i.cfg.MaxChunkAge))
 		slot := startOfCycle.Add(time.Duration(uint64(fp) % uint64(i.cfg.MaxChunkAge)))
 		// If adding this sample means the head chunk will span that point in time, close so it will get flushed
-		if series.head().FirstTime < slot && timestamp >= slot {
-			series.closeHead(reasonSpreadFlush)
+		if series.Head().FirstTime < slot && timestamp >= slot {
+			series.CloseHead(reasonSpreadFlush)
 		}
 	}
 
-	if err := series.add(model.SamplePair{
+	if err := series.Add(model.SamplePair{
 		Value:     value,
 		Timestamp: timestamp,
 	}); err != nil {
@@ -520,7 +520,7 @@ func (i *Ingester) Query(ctx context.Context, req *client.QueryRequest) (*client
 	result := &client.QueryResponse{}
 	numSeries, numSamples := 0, 0
 	maxSamplesPerQuery := i.limits.MaxSamplesPerQuery(userID)
-	err = state.forSeriesMatching(ctx, matchers, func(ctx context.Context, _ model.Fingerprint, series *memorySeries) error {
+	err = state.forSeriesMatching(ctx, matchers, func(ctx context.Context, _ model.Fingerprint, series *MemorySeries) error {
 		values, err := series.samplesForRange(from, through)
 		if err != nil {
 			return err
@@ -587,8 +587,8 @@ func (i *Ingester) QueryStream(req *client.QueryRequest, stream client.Ingester_
 	// can iteratively merge them with entries coming from the chunk store.  But
 	// that would involve locking all the series & sorting, so until we have
 	// a better solution in the ingesters I'd rather take the hit in the queriers.
-	err = state.forSeriesMatching(stream.Context(), matchers, func(ctx context.Context, _ model.Fingerprint, series *memorySeries) error {
-		chunks := make([]*desc, 0, len(series.chunkDescs))
+	err = state.forSeriesMatching(stream.Context(), matchers, func(ctx context.Context, _ model.Fingerprint, series *MemorySeries) error {
+		chunks := make([]*ChunkDesc, 0, len(series.chunkDescs))
 		for _, chunk := range series.chunkDescs {
 			if !(chunk.FirstTime.After(through) || chunk.LastTime.Before(from)) {
 				chunks = append(chunks, chunk.slice(from, through))
@@ -710,7 +710,7 @@ func (i *Ingester) MetricsForLabelMatchers(ctx context.Context, req *client.Metr
 
 	lss := map[model.Fingerprint]labels.Labels{}
 	for _, matchers := range matchersSet {
-		if err := state.forSeriesMatching(ctx, matchers, func(ctx context.Context, fp model.Fingerprint, series *memorySeries) error {
+		if err := state.forSeriesMatching(ctx, matchers, func(ctx context.Context, fp model.Fingerprint, series *MemorySeries) error {
 			if _, ok := lss[fp]; !ok {
 				lss[fp] = series.metric
 			}
@@ -755,7 +755,7 @@ func (i *Ingester) UserStats(ctx context.Context, req *client.UserStatsRequest) 
 		IngestionRate:     apiRate + ruleRate,
 		ApiIngestionRate:  apiRate,
 		RuleIngestionRate: ruleRate,
-		NumSeries:         uint64(state.fpToSeries.length()),
+		NumSeries:         uint64(state.fpToSeries.Length()),
 	}, nil
 }
 
@@ -785,7 +785,7 @@ func (i *Ingester) AllUserStats(ctx context.Context, req *client.UserStatsReques
 				IngestionRate:     apiRate + ruleRate,
 				ApiIngestionRate:  apiRate,
 				RuleIngestionRate: ruleRate,
-				NumSeries:         uint64(state.fpToSeries.length()),
+				NumSeries:         uint64(state.fpToSeries.Length()),
 			},
 		})
 	}

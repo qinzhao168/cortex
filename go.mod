@@ -70,6 +70,7 @@ require (
 	google.golang.org/api v0.14.0
 	google.golang.org/grpc v1.25.1
 	gopkg.in/yaml.v2 v2.2.7
+	k8s.io/apimachinery v0.0.0-20191115015347-3c7067801da2
 	k8s.io/client-go v12.0.0+incompatible // indirect
 	sigs.k8s.io/yaml v1.1.0
 )

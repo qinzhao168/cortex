@@ -127,13 +127,15 @@ func (g *Generator) run(ctx context.Context) error {
 				return err
 			}
 
-			s, exists := memSeriesMap.Get(fp)
+			series, exists := memSeriesMap.Get(fp)
 			if !exists {
-				s = ingester.NewMemorySeries(sample.Metric, nil)
-				memSeriesMap.Put(fp, s)
+				series = ingester.NewMemorySeries(sample.Metric, prometheus.NewCounter(prometheus.CounterOpts{
+					Name: "dummy_counter",
+				}))
+				memSeriesMap.Put(fp, series)
 			}
 
-			err = s.Add(model.SamplePair{
+			err = series.Add(model.SamplePair{
 				Timestamp: model.Time(sample.T),
 				Value:     model.SampleValue(sample.V),
 			})

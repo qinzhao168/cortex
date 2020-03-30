@@ -83,6 +83,7 @@ func (g *Generator) run(ctx context.Context) error {
 
 	expr, err := promql.ParseExpr(g.cfg.Query)
 	if err != nil {
+		level.Error(g.logger).Log("msg", "unable to parse promql expression", "err", err)
 		return err
 	}
 
@@ -94,6 +95,7 @@ func (g *Generator) run(ctx context.Context) error {
 	for cur.Before(end) {
 		q, err := g.engine.NewInstantQuery(g.queryable, expr.String(), cur.Time())
 		if err != nil {
+			level.Error(g.logger).Log("msg", "unable to generate instant query", "err", err)
 			return err
 		}
 
@@ -136,6 +138,7 @@ func (g *Generator) run(ctx context.Context) error {
 			})
 
 			if err != nil {
+				level.Error(g.logger).Log("msg", "unable to add sample pair", "err", err)
 				return err
 			}
 		}
@@ -157,12 +160,14 @@ func (g *Generator) flushChunks(ctx context.Context, userID string, fp model.Fin
 	for _, chunkDesc := range chunkDescs {
 		c := chunk.NewChunk(userID, fp, metric, chunkDesc.C, chunkDesc.FirstTime, chunkDesc.LastTime)
 		if err := c.Encode(); err != nil {
+			level.Error(g.logger).Log("msg", "unable to encode chunk", "err", err)
 			return err
 		}
 		wireChunks = append(wireChunks, c)
 	}
 
 	if err := g.store.Put(ctx, wireChunks); err != nil {
+		level.Error(g.logger).Log("msg", "unable to store chunk", "err", err)
 		return err
 	}
 

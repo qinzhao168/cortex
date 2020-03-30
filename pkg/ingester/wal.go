@@ -267,9 +267,9 @@ func (w *walWrapper) performCheckpoint(immediate bool) (err error) {
 	var wireChunkBuf []client.Chunk
 	for userID, state := range us {
 		for pair := range state.fpToSeries.Iter() {
-			state.fpLocker.Lock(pair.fp)
-			wireChunkBuf, err = w.checkpointSeries(checkpoint, userID, pair.fp, pair.series, wireChunkBuf)
-			state.fpLocker.Unlock(pair.fp)
+			state.fpLocker.Lock(pair.Fp)
+			wireChunkBuf, err = w.checkpointSeries(checkpoint, userID, pair.Fp, pair.Series, wireChunkBuf)
+			state.fpLocker.Unlock(pair.Fp)
 			if err != nil {
 				return err
 			}
@@ -379,7 +379,7 @@ func (w *walWrapper) deleteCheckpoints(maxIndex int) (err error) {
 // checkpointSeries write the chunks of the series to the checkpoint.
 func (w *walWrapper) checkpointSeries(cp *wal.WAL, userID string, fp model.Fingerprint, series *MemorySeries, wireChunks []client.Chunk) ([]client.Chunk, error) {
 	var err error
-	wireChunks, err = toWireChunks(series.chunkDescs, wireChunks[:0])
+	wireChunks, err = toWireChunks(series.ChunkDescs, wireChunks[:0])
 	if err != nil {
 		return wireChunks, err
 	}
@@ -387,7 +387,7 @@ func (w *walWrapper) checkpointSeries(cp *wal.WAL, userID string, fp model.Finge
 	buf, err := proto.Marshal(&Series{
 		UserId:      userID,
 		Fingerprint: uint64(fp),
-		Labels:      client.FromLabelsToLabelAdapters(series.metric),
+		Labels:      client.FromLabelsToLabelAdapters(series.Metric),
 		Chunks:      wireChunks,
 	})
 	if err != nil {

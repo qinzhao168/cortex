@@ -313,7 +313,7 @@ outer:
 		}
 
 		for _, filter := range filters {
-			if !filter.Matches(series.metric.Get(filter.Name)) {
+			if !filter.Matches(series.Metric.Get(filter.Name)) {
 				u.fpLocker.Unlock(fp)
 				continue outer
 			}

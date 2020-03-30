@@ -14,10 +14,10 @@ import (
 )
 
 type MemorySeries struct {
-	metric labels.Labels
+	Metric labels.Labels
 
 	// Sorted by start time, overlapping chunk ranges are forbidden.
-	chunkDescs []*ChunkDesc
+	ChunkDescs []*ChunkDesc
 
 	// Whether the current head chunk has already been finished.  If true,
 	// the current head chunk must not be modified anymore.
@@ -37,7 +37,7 @@ type MemorySeries struct {
 // given metric.
 func NewMemorySeries(m labels.Labels, createdChunks prometheus.Counter) *MemorySeries {
 	return &MemorySeries{
-		metric:        m,
+		Metric:        m,
 		lastTime:      model.Earliest,
 		createdChunks: createdChunks,
 	}
@@ -59,17 +59,17 @@ func (s *MemorySeries) Add(v model.SamplePair) error {
 		if v.Value.Equal(s.lastSampleValue) {
 			return makeNoReportError("duplicate-sample")
 		}
-		return makeMetricValidationError("new-value-for-timestamp", s.metric,
+		return makeMetricValidationError("new-value-for-timestamp", s.Metric,
 			fmt.Errorf("sample with repeated timestamp but different value; last value: %v, incoming value: %v", s.lastSampleValue, v.Value))
 	}
 	if v.Timestamp < s.lastTime {
-		return makeMetricValidationError("sample-out-of-order", s.metric,
+		return makeMetricValidationError("sample-out-of-order", s.Metric,
 			fmt.Errorf("sample timestamp out of order; last timestamp: %v, incoming timestamp: %v", s.lastTime, v.Timestamp))
 	}
 
-	if len(s.chunkDescs) == 0 || s.headChunkClosed {
+	if len(s.ChunkDescs) == 0 || s.headChunkClosed {
 		newHead := newDesc(encoding.New(), v.Timestamp, v.Timestamp)
-		s.chunkDescs = append(s.chunkDescs, newHead)
+		s.ChunkDescs = append(s.ChunkDescs, newHead)
 		s.headChunkClosed = false
 		s.createdChunks.Inc()
 	}
@@ -87,7 +87,7 @@ func (s *MemorySeries) Add(v model.SamplePair) error {
 		if err != nil {
 			return err
 		}
-		s.chunkDescs = append(s.chunkDescs, newDesc(newChunk, first, last))
+		s.ChunkDescs = append(s.ChunkDescs, newDesc(newChunk, first, last))
 		s.createdChunks.Inc()
 	}
 
@@ -120,7 +120,7 @@ func firstAndLastTimes(c encoding.Chunk) (model.Time, model.Time, error) {
 // the fingerprint of the memorySeries. This method will panic if this
 // series has no chunk descriptors.
 func (s *MemorySeries) CloseHead(reason flushReason) {
-	s.chunkDescs[0].flushReason = reason
+	s.ChunkDescs[0].flushReason = reason
 	s.headChunkClosed = true
 }
 
@@ -128,14 +128,14 @@ func (s *MemorySeries) CloseHead(reason flushReason) {
 // locked the fingerprint of the memorySeries. This method will panic if this
 // series has no chunk descriptors.
 func (s *MemorySeries) FirstTime() model.Time {
-	return s.chunkDescs[0].FirstTime
+	return s.ChunkDescs[0].FirstTime
 }
 
 // Returns time of oldest chunk in the series, that isn't flushed. If there are
 // no chunks, or all chunks are flushed, returns 0.
 // The caller must have locked the fingerprint of the memorySeries.
 func (s *MemorySeries) firstUnflushedChunkTime() model.Time {
-	for _, c := range s.chunkDescs {
+	for _, c := range s.ChunkDescs {
 		if !c.flushed {
 			return c.FirstTime
 		}
@@ -148,22 +148,22 @@ func (s *MemorySeries) firstUnflushedChunkTime() model.Time {
 // locked the fingerprint of the memorySeries. This method will panic if this
 // series has no chunk descriptors.
 func (s *MemorySeries) Head() *ChunkDesc {
-	return s.chunkDescs[len(s.chunkDescs)-1]
+	return s.ChunkDescs[len(s.ChunkDescs)-1]
 }
 
 func (s *MemorySeries) samplesForRange(from, through model.Time) ([]model.SamplePair, error) {
 	// Find first chunk with start time after "from".
-	fromIdx := sort.Search(len(s.chunkDescs), func(i int) bool {
-		return s.chunkDescs[i].FirstTime.After(from)
+	fromIdx := sort.Search(len(s.ChunkDescs), func(i int) bool {
+		return s.ChunkDescs[i].FirstTime.After(from)
 	})
 	// Find first chunk with start time after "through".
-	throughIdx := sort.Search(len(s.chunkDescs), func(i int) bool {
-		return s.chunkDescs[i].FirstTime.After(through)
+	throughIdx := sort.Search(len(s.ChunkDescs), func(i int) bool {
+		return s.ChunkDescs[i].FirstTime.After(through)
 	})
-	if fromIdx == len(s.chunkDescs) {
+	if fromIdx == len(s.ChunkDescs) {
 		// Even the last chunk starts before "from". Find out if the
 		// series ends before "from" and we don't need to do anything.
-		lt := s.chunkDescs[len(s.chunkDescs)-1].LastTime
+		lt := s.ChunkDescs[len(s.ChunkDescs)-1].LastTime
 		if lt.Before(from) {
 			return nil, nil
 		}
@@ -171,7 +171,7 @@ func (s *MemorySeries) samplesForRange(from, through model.Time) ([]model.Sample
 	if fromIdx > 0 {
 		fromIdx--
 	}
-	if throughIdx == len(s.chunkDescs) {
+	if throughIdx == len(s.ChunkDescs) {
 		throughIdx--
 	}
 	var values []model.SamplePair
@@ -181,7 +181,7 @@ func (s *MemorySeries) samplesForRange(from, through model.Time) ([]model.Sample
 	}
 	var reuseIter encoding.Iterator
 	for idx := fromIdx; idx <= throughIdx; idx++ {
-		cd := s.chunkDescs[idx]
+		cd := s.ChunkDescs[idx]
 		reuseIter = cd.C.NewIterator(reuseIter)
 		chValues, err := encoding.RangeValues(reuseIter, in)
 		if err != nil {
@@ -193,11 +193,11 @@ func (s *MemorySeries) samplesForRange(from, through model.Time) ([]model.Sample
 }
 
 func (s *MemorySeries) setChunks(descs []*ChunkDesc) error {
-	if len(s.chunkDescs) != 0 {
+	if len(s.ChunkDescs) != 0 {
 		return fmt.Errorf("series already has chunks")
 	}
 
-	s.chunkDescs = descs
+	s.ChunkDescs = descs
 	if len(descs) > 0 {
 		s.lastTime = descs[len(descs)-1].LastTime
 	}

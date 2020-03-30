@@ -17,6 +17,7 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/ingester"
+	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/services"
 )
 
@@ -28,7 +29,6 @@ type Config struct {
 	Query              string        `yaml:"query"`
 	Name               string        `yaml:"name"`
 	User               string        `yaml:"user"`
-	UserDest           string        `yaml:"user_dest"`
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet
@@ -39,7 +39,6 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.StringVar(&cfg.Query, "generator.query", "", "Query to evaluate and write to configured chunk store.")
 	f.StringVar(&cfg.Name, "generator.name", "", "Query to evaluate and write to configured chunk store.")
 	f.StringVar(&cfg.User, "generator.user", "", "Cortex user to query chunks from.")
-	f.StringVar(&cfg.UserDest, "generator.dest-user", "", "Cortex user to write chunks for.")
 }
 
 // Generator generates and store a Prometheus series from a queryable
@@ -55,8 +54,8 @@ type Generator struct {
 	logger   log.Logger
 }
 
-// NewGenerator returns a new Generator
-func NewGenerator(cfg Config, engine *promql.Engine, queryable promStorage.Queryable, store chunk.Store, reg prometheus.Registerer, logger log.Logger) (*Generator, error) {
+// New returns a new Generator
+func New(cfg Config, engine *promql.Engine, queryable promStorage.Queryable, store chunk.Store, reg prometheus.Registerer, logger log.Logger) (*Generator, error) {
 	generator := &Generator{
 		cfg:       cfg,
 		engine:    engine,
@@ -82,11 +81,6 @@ func (g *Generator) run(ctx context.Context) error {
 	level.Info(g.logger).Log("msg", "generator up and running")
 	ctx = user.InjectOrgID(ctx, g.cfg.User)
 
-	c, err := g.queryable.Querier(ctx, g.cfg.From*1000, g.cfg.To*1000)
-	if err != nil {
-		return err
-	}
-
 	expr, err := promql.ParseExpr(g.cfg.Query)
 	if err != nil {
 		return err
@@ -98,7 +92,7 @@ func (g *Generator) run(ctx context.Context) error {
 	memSeriesMap := ingester.NewSeriesMap()
 
 	for cur.Before(end) {
-		q, err := g.engine.NewInstantQuery(v, expr.String(), cur.Time())
+		q, err := g.engine.NewInstantQuery(g.queryable, expr.String(), cur.Time())
 		if err != nil {
 			return err
 		}
@@ -136,11 +130,40 @@ func (g *Generator) run(ctx context.Context) error {
 				memSeriesMap.Put(fp, s)
 			}
 
-			s.Add(model.SamplePair{
+			err = s.Add(model.SamplePair{
 				Timestamp: model.Time(sample.T),
 				Value:     model.SampleValue(sample.V),
 			})
+
+			if err != nil {
+				return err
+			}
 		}
+	}
+
+	for fpp := range memSeriesMap.Iter() {
+		fpp.Series.CloseHead(1)
+		err = g.flushChunks(ctx, g.cfg.User, fpp.Fp, fpp.Series.Metric, fpp.Series.ChunkDescs)
+		if err != nil {
+			return err
+		}
+	}
+
+	return util.ErrStopProcess
+}
+
+func (g *Generator) flushChunks(ctx context.Context, userID string, fp model.Fingerprint, metric labels.Labels, chunkDescs []*ingester.ChunkDesc) error {
+	wireChunks := make([]chunk.Chunk, 0, len(chunkDescs))
+	for _, chunkDesc := range chunkDescs {
+		c := chunk.NewChunk(userID, fp, metric, chunkDesc.C, chunkDesc.FirstTime, chunkDesc.LastTime)
+		if err := c.Encode(); err != nil {
+			return err
+		}
+		wireChunks = append(wireChunks, c)
+	}
+
+	if err := g.store.Put(ctx, wireChunks); err != nil {
+		return err
 	}
 
 	return nil

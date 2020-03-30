@@ -440,7 +440,7 @@ func (i *Ingester) append(ctx context.Context, userID string, labels labelPairs,
 		return err
 	}
 
-	prevNumChunks := len(series.chunkDescs)
+	prevNumChunks := len(series.ChunkDescs)
 	if i.cfg.SpreadFlushes && prevNumChunks > 0 {
 		// Map from the fingerprint hash to a point in the cycle of period MaxChunkAge
 		startOfCycle := timestamp.Add(-(timestamp.Sub(model.Time(0)) % i.cfg.MaxChunkAge))
@@ -472,7 +472,7 @@ func (i *Ingester) append(ctx context.Context, userID string, labels labelPairs,
 		})
 	}
 
-	i.metrics.memoryChunks.Add(float64(len(series.chunkDescs) - prevNumChunks))
+	i.metrics.memoryChunks.Add(float64(len(series.ChunkDescs) - prevNumChunks))
 	i.metrics.ingestedSamples.Inc()
 	switch source {
 	case client.RULE:
@@ -536,7 +536,7 @@ func (i *Ingester) Query(ctx context.Context, req *client.QueryRequest) (*client
 		}
 
 		ts := client.TimeSeries{
-			Labels:  client.FromLabelsToLabelAdapters(series.metric),
+			Labels:  client.FromLabelsToLabelAdapters(series.Metric),
 			Samples: make([]client.Sample, 0, len(values)),
 		}
 		for _, s := range values {
@@ -588,8 +588,8 @@ func (i *Ingester) QueryStream(req *client.QueryRequest, stream client.Ingester_
 	// that would involve locking all the series & sorting, so until we have
 	// a better solution in the ingesters I'd rather take the hit in the queriers.
 	err = state.forSeriesMatching(stream.Context(), matchers, func(ctx context.Context, _ model.Fingerprint, series *MemorySeries) error {
-		chunks := make([]*ChunkDesc, 0, len(series.chunkDescs))
-		for _, chunk := range series.chunkDescs {
+		chunks := make([]*ChunkDesc, 0, len(series.ChunkDescs))
+		for _, chunk := range series.ChunkDescs {
 			if !(chunk.FirstTime.After(through) || chunk.LastTime.Before(from)) {
 				chunks = append(chunks, chunk.slice(from, through))
 			}
@@ -607,7 +607,7 @@ func (i *Ingester) QueryStream(req *client.QueryRequest, stream client.Ingester_
 
 		numChunks += len(wireChunks)
 		batch = append(batch, client.TimeSeriesChunk{
-			Labels: client.FromLabelsToLabelAdapters(series.metric),
+			Labels: client.FromLabelsToLabelAdapters(series.Metric),
 			Chunks: wireChunks,
 		})
 
@@ -712,7 +712,7 @@ func (i *Ingester) MetricsForLabelMatchers(ctx context.Context, req *client.Metr
 	for _, matchers := range matchersSet {
 		if err := state.forSeriesMatching(ctx, matchers, func(ctx context.Context, fp model.Fingerprint, series *MemorySeries) error {
 			if _, ok := lss[fp]; !ok {
-				lss[fp] = series.metric
+				lss[fp] = series.Metric
 			}
 			return nil
 		}, nil, 0); err != nil {

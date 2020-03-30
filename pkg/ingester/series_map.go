@@ -28,10 +28,10 @@ type shard struct {
 	_ [cacheLineSize - unsafe.Sizeof(sync.Mutex{}) - unsafe.Sizeof(map[model.Fingerprint]*MemorySeries{})]byte
 }
 
-// fingerprintSeriesPair pairs a fingerprint with a memorySeries pointer.
-type fingerprintSeriesPair struct {
-	fp     model.Fingerprint
-	series *MemorySeries
+// FingerprintSeriesPair pairs a fingerprint with a memorySeries pointer.
+type FingerprintSeriesPair struct {
+	Fp     model.Fingerprint
+	Series *MemorySeries
 }
 
 // NewSeriesMap returns a newly allocated empty seriesMap. To create a seriesMap
@@ -88,14 +88,14 @@ func (sm *SeriesMap) Del(fp model.Fingerprint) {
 // for iterating over a map with a 'range' clause. However, if the next element
 // in iteration order is removed after the current element has been received
 // from the channel, it will still be produced by the channel.
-func (sm *SeriesMap) Iter() <-chan fingerprintSeriesPair {
-	ch := make(chan fingerprintSeriesPair)
+func (sm *SeriesMap) Iter() <-chan FingerprintSeriesPair {
+	ch := make(chan FingerprintSeriesPair)
 	go func() {
 		for i := range sm.shards {
 			sm.shards[i].mtx.Lock()
 			for fp, ms := range sm.shards[i].m {
 				sm.shards[i].mtx.Unlock()
-				ch <- fingerprintSeriesPair{fp, ms}
+				ch <- FingerprintSeriesPair{fp, ms}
 				sm.shards[i].mtx.Lock()
 			}
 			sm.shards[i].mtx.Unlock()

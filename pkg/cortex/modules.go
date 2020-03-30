@@ -28,6 +28,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/configs/db"
 	"github.com/cortexproject/cortex/pkg/distributor"
 	"github.com/cortexproject/cortex/pkg/flusher"
+	"github.com/cortexproject/cortex/pkg/generator"
 	"github.com/cortexproject/cortex/pkg/ingester"
 	"github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/querier"
@@ -450,6 +451,27 @@ func (t *Cortex) initRuler(cfg *Config) (serv services.Service, err error) {
 	return t.ruler, nil
 }
 
+func (t *Cortex) initGenerator(cfg *Config) (serv services.Service, err error) {
+	var tombstonesLoader *purger.TombstonesLoader
+	if cfg.DataPurgerConfig.Enable {
+		tombstonesLoader = purger.NewTombstonesLoader(t.deletesStore)
+	} else {
+		// until we need to explicitly enable delete series support we need to do create TombstonesLoader without DeleteStore which acts as noop
+		tombstonesLoader = purger.NewTombstonesLoader(nil)
+	}
+
+	cfg.Ruler.Ring.ListenPort = cfg.Server.GRPCListenPort
+	cfg.Ruler.Ring.KVStore.MemberlistKV = t.memberlistKV.GetMemberlistKV
+	queryable, engine := querier.New(cfg.Querier, t.distributor, t.storeQueryable, tombstonesLoader, prometheus.DefaultRegisterer)
+
+	t.generator, err = generator.New(cfg.Generator, engine, queryable, t.store, prometheus.DefaultRegisterer, util.Logger)
+	if err != nil {
+		return
+	}
+
+	return t.generator, nil
+}
+
 func (t *Cortex) initConfig(cfg *Config) (serv services.Service, err error) {
 	t.configDB, err = db.New(cfg.Configs.DB)
 	if err != nil {
@@ -638,7 +660,7 @@ var modules = map[ModuleName]module{
 
 	Generator: {
 		deps:           []ModuleName{Store, StoreQueryable},
-		wrappedService: (*Cortex).initRuler,
+		wrappedService: (*Cortex).initGenerator,
 	},
 
 	Configs: {

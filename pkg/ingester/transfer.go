@@ -67,7 +67,7 @@ func (i *Ingester) TransferChunks(stream client.Ingester_TransferChunksServer) e
 			if err != nil {
 				return errors.Wrapf(err, "TransferChunks: getOrCreateSeries: user %s series %s", wireSeries.UserId, wireSeries.Labels)
 			}
-			prevNumChunks := len(series.chunkDescs)
+			prevNumChunks := len(series.ChunkDescs)
 
 			err = series.setChunks(descs)
 			state.fpLocker.Unlock(fp) // acquired in getOrCreateSeries
@@ -76,7 +76,7 @@ func (i *Ingester) TransferChunks(stream client.Ingester_TransferChunksServer) e
 			}
 
 			seriesReceived++
-			i.metrics.memoryChunks.Add(float64(len(series.chunkDescs) - prevNumChunks))
+			i.metrics.memoryChunks.Add(float64(len(series.ChunkDescs) - prevNumChunks))
 			i.metrics.receivedChunks.Add(float64(len(descs)))
 		}
 
@@ -427,26 +427,26 @@ func (i *Ingester) transferOut(ctx context.Context) error {
 	var chunks []client.Chunk
 	for userID, state := range userStatesCopy {
 		for pair := range state.fpToSeries.Iter() {
-			state.fpLocker.Lock(pair.fp)
+			state.fpLocker.Lock(pair.Fp)
 
-			if len(pair.series.chunkDescs) == 0 { // Nothing to send?
-				state.fpLocker.Unlock(pair.fp)
+			if len(pair.Series.ChunkDescs) == 0 { // Nothing to send?
+				state.fpLocker.Unlock(pair.Fp)
 				continue
 			}
 
-			chunks, err = toWireChunks(pair.series.chunkDescs, chunks)
+			chunks, err = toWireChunks(pair.Series.ChunkDescs, chunks)
 			if err != nil {
-				state.fpLocker.Unlock(pair.fp)
+				state.fpLocker.Unlock(pair.Fp)
 				return errors.Wrap(err, "toWireChunks")
 			}
 
 			err = client.SendTimeSeriesChunk(stream, &client.TimeSeriesChunk{
 				FromIngesterId: i.lifecycler.ID,
 				UserId:         userID,
-				Labels:         client.FromLabelsToLabelAdapters(pair.series.metric),
+				Labels:         client.FromLabelsToLabelAdapters(pair.Series.Metric),
 				Chunks:         chunks,
 			})
-			state.fpLocker.Unlock(pair.fp)
+			state.fpLocker.Unlock(pair.Fp)
 			if err != nil {
 				return errors.Wrap(err, "Send")
 			}

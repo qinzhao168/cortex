@@ -9,6 +9,7 @@ import (
 	"os"
 
 	"github.com/cortexproject/cortex/pkg/configs"
+	"github.com/cortexproject/cortex/pkg/generator"
 	"github.com/cortexproject/cortex/pkg/storegateway"
 
 	"github.com/go-kit/kit/log"
@@ -97,6 +98,7 @@ type Config struct {
 	Alertmanager  alertmanager.MultitenantAlertmanagerConfig `yaml:"alertmanager"`
 	RuntimeConfig runtimeconfig.ManagerConfig                `yaml:"runtime_config"`
 	MemberlistKV  memberlist.KVConfig                        `yaml:"memberlist"`
+	Generator     generator.Config                           `yaml:"generator"`
 }
 
 // RegisterFlags registers flag.
@@ -135,6 +137,7 @@ func (c *Config) RegisterFlags(f *flag.FlagSet) {
 	c.Alertmanager.RegisterFlags(f)
 	c.RuntimeConfig.RegisterFlags(f)
 	c.MemberlistKV.RegisterFlags(f, "")
+	c.Generator.RegisterFlags(f)
 
 	// These don't seem to have a home.
 	flag.IntVar(&chunk_util.QueryParallelism, "querier.query-parallelism", 100, "Max subqueries run in parallel per higher-level query.")
@@ -202,6 +205,7 @@ type Cortex struct {
 	compactor    *compactor.Compactor
 	storeGateway *storegateway.StoreGateway
 	memberlistKV *memberlist.KVInit
+	generator    *generator.Generator
 
 	// Queryable that the querier should use to query the long
 	// term storage. It depends on the storage engine used.

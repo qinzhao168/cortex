@@ -70,11 +70,11 @@ func (i *Ingester) sweepUsers(immediate bool) {
 
 	for id, state := range i.userStates.cp() {
 		for pair := range state.fpToSeries.Iter() {
-			state.fpLocker.Lock(pair.fp)
-			i.sweepSeries(id, pair.fp, pair.series, immediate)
-			i.removeFlushedChunks(state, pair.fp, pair.series)
-			first := pair.series.firstUnflushedChunkTime()
-			state.fpLocker.Unlock(pair.fp)
+			state.fpLocker.Lock(pair.Fp)
+			i.sweepSeries(id, pair.Fp, pair.Series, immediate)
+			i.removeFlushedChunks(state, pair.Fp, pair.Series)
+			first := pair.Series.firstUnflushedChunkTime()
+			state.fpLocker.Unlock(pair.Fp)
 
 			if first > 0 && (oldest == 0 || first < oldest) {
 				oldest = first
@@ -123,7 +123,7 @@ func (f flushReason) String() string {
 // NB we don't close the head chunk here, as the series could wait in the queue
 // for some time, and we want to encourage chunks to be as full as possible.
 func (i *Ingester) sweepSeries(userID string, fp model.Fingerprint, series *MemorySeries, immediate bool) {
-	if len(series.chunkDescs) <= 0 {
+	if len(series.ChunkDescs) <= 0 {
 		return
 	}
 
@@ -136,12 +136,12 @@ func (i *Ingester) sweepSeries(userID string, fp model.Fingerprint, series *Memo
 	flushQueueIndex := int(uint64(fp) % uint64(i.cfg.ConcurrentFlushes))
 	if i.flushQueues[flushQueueIndex].Enqueue(&flushOp{firstTime, userID, fp, immediate}) {
 		i.metrics.flushReasons.WithLabelValues(flush.String()).Inc()
-		util.Event().Log("msg", "add to flush queue", "userID", userID, "reason", flush, "firstTime", firstTime, "fp", fp, "series", series.metric, "nlabels", len(series.metric), "queue", flushQueueIndex)
+		util.Event().Log("msg", "add to flush queue", "userID", userID, "reason", flush, "firstTime", firstTime, "fp", fp, "series", series.Metric, "nlabels", len(series.Metric), "queue", flushQueueIndex)
 	}
 }
 
 func (i *Ingester) shouldFlushSeries(series *MemorySeries, fp model.Fingerprint, immediate bool) flushReason {
-	if len(series.chunkDescs) == 0 {
+	if len(series.ChunkDescs) == 0 {
 		return noFlush
 	}
 	if immediate {
@@ -149,14 +149,14 @@ func (i *Ingester) shouldFlushSeries(series *MemorySeries, fp model.Fingerprint,
 	}
 
 	// Flush if we have more than one chunk, and haven't already flushed the first chunk
-	if len(series.chunkDescs) > 1 && !series.chunkDescs[0].flushed {
-		if series.chunkDescs[0].flushReason != noFlush {
-			return series.chunkDescs[0].flushReason
+	if len(series.ChunkDescs) > 1 && !series.ChunkDescs[0].flushed {
+		if series.ChunkDescs[0].flushReason != noFlush {
+			return series.ChunkDescs[0].flushReason
 		}
 		return reasonMultipleChunksInSeries
 	}
 	// Otherwise look in more detail at the first chunk
-	return i.shouldFlushChunk(series.chunkDescs[0], fp, series.isStale())
+	return i.shouldFlushChunk(series.ChunkDescs[0], fp, series.isStale())
 }
 
 func (i *Ingester) shouldFlushChunk(c *ChunkDesc, fp model.Fingerprint, lastValueIsStale bool) flushReason {
@@ -239,7 +239,7 @@ func (i *Ingester) flushUserSeries(flushQueueIndex int, userID string, fp model.
 	}
 
 	// shouldFlushSeries() has told us we have at least one chunk
-	chunks := series.chunkDescs
+	chunks := series.ChunkDescs
 	if immediate {
 		series.CloseHead(reasonImmediate)
 	} else if chunkReason := i.shouldFlushChunk(series.Head(), fp, series.isStale()); chunkReason != noFlush {
@@ -256,7 +256,7 @@ func (i *Ingester) flushUserSeries(flushQueueIndex int, userID string, fp model.
 				chunkLength += c.C.Len()
 			}
 			if chunkLength < minChunkLength {
-				userState.removeSeries(fp, series.metric)
+				userState.removeSeries(fp, series.Metric)
 				i.metrics.memoryChunks.Sub(float64(len(chunks)))
 				i.metrics.droppedChunks.Add(float64(len(chunks)))
 				util.Event().Log(
@@ -265,7 +265,7 @@ func (i *Ingester) flushUserSeries(flushQueueIndex int, userID string, fp model.
 					"numChunks", len(chunks),
 					"chunkLength", chunkLength,
 					"fp", fp,
-					"series", series.metric,
+					"series", series.Metric,
 					"queue", flushQueueIndex,
 				)
 				chunks = nil
@@ -287,21 +287,21 @@ func (i *Ingester) flushUserSeries(flushQueueIndex int, userID string, fp model.
 	defer sp.Finish()
 	sp.SetTag("organization", userID)
 
-	util.Event().Log("msg", "flush chunks", "userID", userID, "reason", reason, "numChunks", len(chunks), "firstTime", chunks[0].FirstTime, "fp", fp, "series", series.metric, "nlabels", len(series.metric), "queue", flushQueueIndex)
-	err := i.flushChunks(ctx, userID, fp, series.metric, chunks)
+	util.Event().Log("msg", "flush chunks", "userID", userID, "reason", reason, "numChunks", len(chunks), "firstTime", chunks[0].FirstTime, "fp", fp, "series", series.Metric, "nlabels", len(series.Metric), "queue", flushQueueIndex)
+	err := i.flushChunks(ctx, userID, fp, series.Metric, chunks)
 	if err != nil {
 		return err
 	}
 
 	userState.fpLocker.Lock(fp)
 	if immediate {
-		userState.removeSeries(fp, series.metric)
+		userState.removeSeries(fp, series.Metric)
 		i.metrics.memoryChunks.Sub(float64(len(chunks)))
 	} else {
 		for i := 0; i < len(chunks); i++ {
 			// mark the chunks as flushed, so we can remove them after the retention period
-			series.chunkDescs[i].flushed = true
-			series.chunkDescs[i].LastUpdate = model.Now()
+			series.ChunkDescs[i].flushed = true
+			series.ChunkDescs[i].LastUpdate = model.Now()
 		}
 	}
 	userState.fpLocker.Unlock(fp)
@@ -311,17 +311,17 @@ func (i *Ingester) flushUserSeries(flushQueueIndex int, userID string, fp model.
 // must be called under fpLocker lock
 func (i *Ingester) removeFlushedChunks(userState *userState, fp model.Fingerprint, series *MemorySeries) {
 	now := model.Now()
-	for len(series.chunkDescs) > 0 {
-		if series.chunkDescs[0].flushed && now.Sub(series.chunkDescs[0].LastUpdate) > i.cfg.RetainPeriod {
-			series.chunkDescs[0] = nil // erase reference so the chunk can be garbage-collected
-			series.chunkDescs = series.chunkDescs[1:]
+	for len(series.ChunkDescs) > 0 {
+		if series.ChunkDescs[0].flushed && now.Sub(series.ChunkDescs[0].LastUpdate) > i.cfg.RetainPeriod {
+			series.ChunkDescs[0] = nil // erase reference so the chunk can be garbage-collected
+			series.ChunkDescs = series.ChunkDescs[1:]
 			i.metrics.memoryChunks.Dec()
 		} else {
 			break
 		}
 	}
-	if len(series.chunkDescs) == 0 {
-		userState.removeSeries(fp, series.metric)
+	if len(series.ChunkDescs) == 0 {
+		userState.removeSeries(fp, series.Metric)
 	}
 }
 

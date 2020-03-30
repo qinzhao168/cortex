@@ -146,7 +146,7 @@ func (g *Generator) run(ctx context.Context) error {
 			}
 		}
 
-		cur.Add(g.cfg.EvaluationInterval)
+		cur = cur.Add(g.cfg.EvaluationInterval)
 	}
 
 	for fpp := range memSeriesMap.Iter() {

@@ -659,7 +659,7 @@ var modules = map[ModuleName]module{
 	},
 
 	Generator: {
-		deps:           []ModuleName{Store, StoreQueryable},
+		deps:           []ModuleName{Store, StoreQueryable, Server},
 		wrappedService: (*Cortex).initGenerator,
 	},
 

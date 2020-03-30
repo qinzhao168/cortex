@@ -17,6 +17,7 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/ingester"
+	"github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/services"
 )
@@ -121,7 +122,7 @@ func (g *Generator) run(ctx context.Context) error {
 			lb.Set(labels.MetricName, g.cfg.Name)
 			sample.Metric = lb.Labels()
 
-			fp, err := model.FingerprintFromString(sample.Metric.String())
+			fp := client.Fingerprint(sample.Metric)
 			if err != nil {
 				return err
 			}
@@ -142,6 +143,8 @@ func (g *Generator) run(ctx context.Context) error {
 				return err
 			}
 		}
+
+		cur.Add(g.cfg.EvaluationInterval)
 	}
 
 	for fpp := range memSeriesMap.Iter() {

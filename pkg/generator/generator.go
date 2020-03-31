@@ -144,6 +144,10 @@ func (g *Generator) executeJob(ctx context.Context, job Job) error {
 
 		res := q.Exec(ctx)
 
+		if res.Err != nil {
+			return res.Err
+		}
+
 		var vector promql.Vector
 		switch v := res.Value.(type) {
 		case promql.Vector:

@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"flag"
+	"fmt"
+	"os"
 	"time"
 
 	"github.com/go-kit/kit/log"
@@ -14,6 +16,7 @@ import (
 	"github.com/prometheus/prometheus/promql"
 	promStorage "github.com/prometheus/prometheus/storage"
 	"github.com/weaveworks/common/user"
+	"gopkg.in/yaml.v2"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/ingester"
@@ -25,21 +28,29 @@ import (
 // Config is the configuration for the recording rules server.
 type Config struct {
 	EvaluationInterval time.Duration `yaml:"evaluation_interval"`
-	From               int64         `yaml:"from"`
-	To                 int64         `yaml:"to"`
-	Query              string        `yaml:"query"`
-	Name               string        `yaml:"name"`
-	User               string        `yaml:"user"`
+	JobsFile           string        `yaml:"jobs_file"`
+}
+
+type JobsConfig struct {
+	Jobs []Job `yaml:"jobs"`
+}
+
+type Job struct {
+	From  int64  `yaml:"from"`
+	To    int64  `yaml:"to"`
+	Query string `yaml:"query"`
+	Name  string `yaml:"name"`
+	User  string `yaml:"user"`
+}
+
+func (j Job) toString() string {
+	return fmt.Sprintf("{from=%v, to=%v, query='%v', name='%v', user=%v", j.From, j.To, j.Query, j.Name, j.User)
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.DurationVar(&cfg.EvaluationInterval, "generator.evaluation-interval", 1*time.Minute, "Interval at which to evaluate a series.")
-	f.Int64Var(&cfg.From, "generator.from", -1, "First timestamp to evaluate the provided query.")
-	f.Int64Var(&cfg.To, "generator.to", -1, "Last timestamp to evaluate the provided query.")
-	f.StringVar(&cfg.Query, "generator.query", "", "Query to evaluate and write to configured chunk store.")
-	f.StringVar(&cfg.Name, "generator.name", "", "Query to evaluate and write to configured chunk store.")
-	f.StringVar(&cfg.User, "generator.user", "", "Cortex user to query chunks from.")
+	f.StringVar(&cfg.JobsFile, "generator.jobs-file", "", "Yaml file containing description of generator jobs")
 }
 
 // Generator generates and store a Prometheus series from a queryable
@@ -80,16 +91,47 @@ func (g *Generator) stopping(_ error) error {
 
 func (g *Generator) run(ctx context.Context) error {
 	level.Info(g.logger).Log("msg", "generator up and running")
-	ctx = user.InjectOrgID(ctx, g.cfg.User)
 
-	expr, err := promql.ParseExpr(g.cfg.Query)
+	if g.cfg.JobsFile == "" {
+		return errors.New("no jobs file specified")
+	}
+
+	f, err := os.Open(g.cfg.JobsFile)
+	if err != nil {
+		return err
+	}
+
+	jobs := JobsConfig{}
+
+	decoder := yaml.NewDecoder(f)
+	decoder.SetStrict(true)
+	err = decoder.Decode(&jobs)
+	if err != nil {
+		return err
+	}
+
+	for _, job := range jobs.Jobs {
+		level.Info(g.logger).Log("msg", "running job", "job", job.toString())
+		err = g.executeJob(ctx, job)
+		if err != nil {
+			return err
+		}
+	}
+
+	return util.ErrStopProcess
+}
+
+func (g *Generator) executeJob(ctx context.Context, job Job) error {
+	ctx = user.InjectOrgID(ctx, job.User)
+
+	expr, err := promql.ParseExpr(job.Query)
 	if err != nil {
 		level.Error(g.logger).Log("msg", "unable to parse promql expression", "err", err)
 		return err
 	}
 
-	cur := model.TimeFromUnix(g.cfg.From)
-	end := model.TimeFromUnix(g.cfg.To)
+	cur := model.TimeFromUnix(job.From)
+	end := model.TimeFromUnix(job.To)
 
 	memSeriesMap := ingester.NewSeriesMap()
 
@@ -119,7 +161,7 @@ func (g *Generator) run(ctx context.Context) error {
 		for i := range vector {
 			sample := &vector[i]
 			lb := labels.NewBuilder(sample.Metric)
-			lb.Set(labels.MetricName, g.cfg.Name)
+			lb.Set(labels.MetricName, job.Name)
 			sample.Metric = lb.Labels()
 
 			fp := client.Fingerprint(sample.Metric)
@@ -151,13 +193,13 @@ func (g *Generator) run(ctx context.Context) error {
 
 	for fpp := range memSeriesMap.Iter() {
 		fpp.Series.CloseHead(1)
-		err = g.flushChunks(ctx, g.cfg.User, fpp.Fp, fpp.Series.Metric, fpp.Series.ChunkDescs)
+		err = g.flushChunks(ctx, job.User, fpp.Fp, fpp.Series.Metric, fpp.Series.ChunkDescs)
 		if err != nil {
 			return err
 		}
 	}
 
-	return util.ErrStopProcess
+	return nil
 }
 
 func (g *Generator) flushChunks(ctx context.Context, userID string, fp model.Fingerprint, metric labels.Labels, chunkDescs []*ingester.ChunkDesc) error {

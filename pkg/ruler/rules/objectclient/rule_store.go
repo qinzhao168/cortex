@@ -3,6 +3,7 @@ package objectclient
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
 	"io/ioutil"
 	strings "strings"
 
@@ -149,10 +150,16 @@ func generateRuleObjectKey(id, namespace, name string) string {
 		return rulePrefix
 	}
 	prefix := rulePrefix + id + "/"
+
 	if namespace == "" {
 		return prefix
 	}
-	return prefix + namespace + "/" + name
+	prefix = prefix + base64.StdEncoding.EncodeToString([]byte(namespace)) + "/"
+	if name == "" {
+		return prefix
+	}
+
+	return prefix + base64.StdEncoding.EncodeToString([]byte(name))
 }
 
 func decomposeRuleObjectKey(handle string) string {

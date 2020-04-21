@@ -145,6 +145,9 @@ func (o *RuleStore) DeleteRuleGroup(ctx context.Context, userID string, namespac
 	return err
 }
 
+// generateRuleObjectKey encodes the group name and namespace using
+// a base64 URL encoding to ensure the character set does not contain
+// forward slashes since that is used as a delimiter.
 func generateRuleObjectKey(id, namespace, name string) string {
 	if id == "" {
 		return rulePrefix
@@ -154,12 +157,12 @@ func generateRuleObjectKey(id, namespace, name string) string {
 	if namespace == "" {
 		return prefix
 	}
-	prefix = prefix + base64.StdEncoding.EncodeToString([]byte(namespace)) + "/"
+	prefix = prefix + base64.URLEncoding.EncodeToString([]byte(namespace)) + "/"
 	if name == "" {
 		return prefix
 	}
 
-	return prefix + base64.StdEncoding.EncodeToString([]byte(name))
+	return prefix + base64.URLEncoding.EncodeToString([]byte(name))
 }
 
 func decomposeRuleObjectKey(handle string) string {

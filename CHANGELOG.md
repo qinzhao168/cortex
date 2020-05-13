@@ -56,7 +56,7 @@
 * [ENHANCEMENT] Redis Cache: Added `idle_timeout`, `wait_on_pool_exhaustion` and `max_conn_lifetime` options to redis cache configuration. #2550
 * [ENHANCEMENT] WAL: the experimental tag has been removed on the WAL in ingesters.
 * [ENHANCEMENT] Use newer AWS API for paginated queries - removes 'Deprecated' message from logfiles. #2452
-* [ENHANCEMENT] Experimental TSDB: added the following metrics to the ingester: #2580 #2583
+* [ENHANCEMENT] Experimental TSDB: added the following metrics to the ingester: #2580 #2583 #2589
   * `cortex_ingester_tsdb_appender_add_duration_seconds`
   * `cortex_ingester_tsdb_appender_commit_duration_seconds`
   * `cortex_ingester_tsdb_refcache_purge_duration_seconds`
@@ -68,12 +68,17 @@
   * `cortex_ingester_tsdb_wal_truncations_failed_total`
   * `cortex_ingester_tsdb_wal_truncations_total`
   * `cortex_ingester_tsdb_wal_writes_failed_total`
+  * `cortex_ingester_tsdb_checkpoint_deletions_failed_total`
+  * `cortex_ingester_tsdb_checkpoint_deletions_total`
+  * `cortex_ingester_tsdb_checkpoint_creations_failed_total`
+  * `cortex_ingester_tsdb_checkpoint_creations_total`
 * [ENHANCEMENT] Experimental TSDB: added metrics useful to alert on critical conditions of the blocks storage: #2573
   * `cortex_compactor_last_successful_run_timestamp_seconds`
   * `cortex_querier_blocks_last_successful_sync_timestamp_seconds` (when store-gateway is disabled)
   * `cortex_querier_blocks_last_successful_scan_timestamp_seconds` (when store-gateway is enabled)
   * `cortex_storegateway_blocks_last_successful_sync_timestamp_seconds`
 * [ENHANCEMENT] Experimental TSDB: added the flag `-experimental.tsdb.wal-compression-enabled` to allow to enable TSDB WAL compression. #2585
+* [ENHANCEMENT] Experimental TSDB: Querier and store-gateway components can now use so-called "caching bucket", which can currently cache fetched chunks into shared memcached server. #2572
 * [BUGFIX] Ruler: Ensure temporary rule files with special characters are properly mapped and cleaned up. #2506
 * [BUGFIX] Fixes #2411, Ensure requests are properly routed to the prometheus api embedded in the query if `-server.path-prefix` is set. #2372
 * [BUGFIX] Experimental TSDB: fixed chunk data corruption when querying back series using the experimental blocks storage. #2400
@@ -86,6 +91,7 @@
 * [BUGFIX] QueryFrontend: fixed a situation where span context missed when downstream_url is used. #2539
 * [BUGFIX] Querier: Fixed a situation where querier would crash because of an unresponsive frontend instance. #2569
 * [BUGFIX] Fixed collection of tracing spans from Thanos components used internally. #2584
+* [BUGFIX] Experimental TSDB: fixed memory leak in ingesters. #2586
 
 ## 1.0.1 / 2020-04-23
 

@@ -227,8 +227,8 @@ func (q *blocksStoreQuerier) Close() error {
 }
 
 func (q *blocksStoreQuerier) selectSorted(sp *storage.SelectParams, matchers ...*labels.Matcher) (storage.SeriesSet, storage.Warnings, error) {
-	log, _ := spanlogger.New(q.ctx, "blocksStoreQuerier.selectSorted")
-	defer log.Span.Finish()
+	spanLog, spanCtx := spanlogger.New(q.ctx, "blocksStoreQuerier.selectSorted")
+	defer spanLog.Span.Finish()
 
 	minT, maxT := q.minT, q.maxT
 	if sp != nil {
@@ -263,7 +263,7 @@ func (q *blocksStoreQuerier) selectSorted(sp *storage.SelectParams, matchers ...
 	}
 
 	var (
-		reqCtx     = grpc_metadata.AppendToOutgoingContext(q.ctx, cortex_tsdb.TenantIDExternalLabel, q.userID)
+		reqCtx     = grpc_metadata.AppendToOutgoingContext(spanCtx, cortex_tsdb.TenantIDExternalLabel, q.userID)
 		g, gCtx    = errgroup.WithContext(reqCtx)
 		mtx        = sync.Mutex{}
 		seriesSets = []storage.SeriesSet(nil)

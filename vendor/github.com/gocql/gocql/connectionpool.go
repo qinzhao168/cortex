@@ -12,9 +12,13 @@ import (
 	"io/ioutil"
 	"math/rand"
 	"net"
+	"strconv"
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
 )
 
 // interface to implement to receive the host information
@@ -294,6 +298,14 @@ func newHostConnPool(session *Session, host *HostInfo, port, size int,
 	return pool
 }
 
+var availableConns = promauto.NewGauge(prometheus.GaugeOpts{
+	Name: "cassandra_available_conns",
+})
+
+var availableStreams = promauto.NewGaugeVec(prometheus.GaugeOpts{
+	Name: "cassandra_available_streams_count",
+}, []string{"conn"})
+
 // Pick a connection from this connection pool for the given query.
 func (pool *hostConnPool) Pick() *Conn {
 	pool.mu.RLock()
@@ -304,6 +316,8 @@ func (pool *hostConnPool) Pick() *Conn {
 	}
 
 	size := len(pool.conns)
+	availableConns.Set(float64(size))
+
 	if size < pool.size {
 		// try to fill the pool
 		go pool.fill()
@@ -323,7 +337,9 @@ func (pool *hostConnPool) Pick() *Conn {
 	// find the conn which has the most available streams, this is racy
 	for i := 0; i < size; i++ {
 		conn := pool.conns[(pos+i)%size]
-		if streams := conn.AvailableStreams(); streams > streamsAvailable {
+		streams := conn.AvailableStreams()
+		availableStreams.WithLabelValues(strconv.Itoa((pos + i) % size)).Set(float64(streams))
+		if streams > streamsAvailable {
 			leastBusyConn = conn
 			streamsAvailable = streams
 		}

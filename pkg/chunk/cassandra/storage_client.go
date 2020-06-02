@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/go-kit/kit/log/level"
 	"github.com/gocql/gocql"
 	"github.com/pkg/errors"
 	"golang.org/x/sync/semaphore"
@@ -92,6 +93,7 @@ func (cfg *Config) session() (*gocql.Session, error) {
 	cluster.QueryObserver = observer{}
 	cluster.Timeout = cfg.Timeout
 	cluster.ConnectTimeout = cfg.ConnectTimeout
+	cluster.ConvictionPolicy = noopConvictionPolicy{}
 	if cfg.Retries > 0 {
 		cluster.RetryPolicy = &gocql.ExponentialBackoffRetryPolicy{
 			NumRetries: cfg.Retries,
@@ -425,3 +427,16 @@ func (s *StorageClient) DeleteChunk(ctx context.Context, chunkID string) error {
 	// ToDo: implement this to support deleting chunks from Cassandra
 	return chunk.ErrMethodNotImplemented
 }
+
+type noopConvictionPolicy struct{}
+
+// AddFailure should return `true` if the host should be convicted, `false` otherwise.
+// Convicted means connections are removed - we don't want that.
+// Implementats gocql.ConvictionPolicy.
+func (noopConvictionPolicy) AddFailure(err error, host *gocql.HostInfo) bool {
+	level.Error(pkgutil.Logger).Log("msg", "Cassandra host failure", "err", err, "host", host.String())
+	return false
+}
+
+// Implementats gocql.ConvictionPolicy.
+func (noopConvictionPolicy) Reset(host *gocql.HostInfo) {}

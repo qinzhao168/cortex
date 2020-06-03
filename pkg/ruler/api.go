@@ -33,9 +33,9 @@ import (
 
 type response struct {
 	Status    string       `json:"status"`
-	Data      interface{}  `json:"data"`
-	ErrorType v1.ErrorType `json:"errorType"`
-	Error     string       `json:"error"`
+	Data      interface{}  `json:"data,omitempty"`
+	ErrorType v1.ErrorType `json:"errorType,omitempty"`
+	Error     string       `json:"error,omitempty"`
 }
 
 // AlertDiscovery has info for all active alerts.

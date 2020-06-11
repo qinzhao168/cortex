@@ -164,12 +164,14 @@ func (f *Frontend) handle(w http.ResponseWriter, r *http.Request) {
 	resp, err := f.roundTripper.RoundTrip(r)
 	queryResponseTime := time.Since(startTime)
 
-	if f.cfg.LogQueriesLongerThan > 0 && queryResponseTime > f.cfg.LogQueriesLongerThan {
+	if f.cfg.LogQueriesLongerThan != 0 && queryResponseTime > f.cfg.LogQueriesLongerThan {
+		id, _ := user.ExtractOrgID(r.Context())
 		logMessage := []interface{}{
 			"msg", "slow query",
 			"host", r.Host,
 			"path", r.URL.Path,
 			"time_taken", queryResponseTime.String(),
+			"org_id", id,
 		}
 		for k, v := range r.URL.Query() {
 			logMessage = append(logMessage, fmt.Sprintf("qs_%s", k), strings.Join(v, ","))

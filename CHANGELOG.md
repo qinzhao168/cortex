@@ -34,6 +34,7 @@
 * [BUGFIX] Fix race in processing of headers in sharded queries. #2762
 * [BUGFIX] Query Frontend: Do not re-split sharded requests around ingester boundaries. #2766
 * [BUGFIX] Experimental Delete Series: Fixed a problem with cache generation numbers prefixed to cache keys. #2800
+* [BUGFIX] Fix panic when using cassandra as store for both index and delete requests. #2774
 
 ## 1.2.0 / 2020-06-xx
 (in progress of release: current release candidate is https://github.com/cortexproject/cortex/releases/tag/v1.2.0-rc.0)

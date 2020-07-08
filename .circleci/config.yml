@@ -222,28 +222,3 @@ jobs:
     - run:
         name: deploy-website
         command: make BUILD_IN_CONTAINER=false web-deploy
-
-  deploy:
-    <<: *defaults
-    steps:
-    - checkout
-    - setup_remote_docker
-    - install-docker
-
-    - restore_cache:
-        key: v1-cortex-{{ .Branch }}-{{ .Revision }}
-
-    - run:
-        name: Load Images
-        command: ln -s /tmp/images ./docker-images; make BUILD_IN_CONTAINER=false load-images
-
-    - run:
-        name: Deploy
-        command: |
-          if [ -n "$DOCKER_REGISTRY_PASSWORD" ]; then
-            docker login -u "$DOCKER_REGISTRY_USER" -p "$DOCKER_REGISTRY_PASSWORD"
-          fi
-          if [ -n "$QUAY_PASSWORD" ]; then
-            docker login -u "$QUAY_USER" -p "$QUAY_PASSWORD" quay.io;
-          fi
-          IMAGE_TAG=$CIRCLE_TAG ./push-images $NOQUAY

@@ -2,6 +2,20 @@
 
 ## master / unreleased
 
+* [CHANGE] Experimental blocks storage: removed the support to transfer blocks between ingesters on shutdown. When running the Cortex blocks storage, ingesters are expected to run with a persistent disk. The following metrics have been removed: #2996
+  * `cortex_ingester_sent_files`
+  * `cortex_ingester_received_files`
+  * `cortex_ingester_received_bytes_total`
+  * `cortex_ingester_sent_bytes_total`
+* [CHANGE] Experimental blocks storage: the `operation` label value `getrange` has changed into `get_range` for the metrics `thanos_store_bucket_cache_operation_requests_total` and `thanos_store_bucket_cache_operation_hits_total`. #3000
+* [CHANGE] Experimental Delete Series: `/api/v1/admin/tsdb/delete_series` and `/api/v1/admin/tsdb/cancel_delete_request` purger APIs to return status code `204` instead of `200` for success. #2946
+* [ENHANCEMENT] Add support for azure storage in China, German and US Government environments. #2988
+* [ENHANCEMENT] Query-tee: added a small tolerance to floating point sample values comparison. #2994
+* [BUGFIX] Query-frontend: Fixed rounding for incoming query timestamps, to be 100% Prometheus compatible. #2990
+* [BUGFIX] Querier: query /series from ingesters regardless the `-querier.query-ingesters-within` setting. #3035
+
+## 1.3.0 in progress
+
 * [CHANGE] Replace the metric `cortex_alertmanager_configs` with `cortex_alertmanager_config_invalid` exposed by Alertmanager. #2960
 * [CHANGE] Experimental Delete Series: Change target flag for purger from `data-purger` to `purger`. #2777
 * [CHANGE] Experimental TSDB: The max concurrent queries against the long-term storage, configured via `-experimental.tsdb.bucket-store.max-concurrent`, is now a limit shared across all tenants and not a per-tenant limit anymore. The default value has changed from `20` to `100` and the following new metrics have been added: #2797

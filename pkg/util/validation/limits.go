@@ -61,6 +61,7 @@ type Limits struct {
 	MaxQueryParallelism int           `yaml:"max_query_parallelism"`
 	CardinalityLimit    int           `yaml:"cardinality_limit"`
 	MaxCacheFreshness   time.Duration `yaml:"max_cache_freshness"`
+	MaxQueriersPerUser  int           `yaml:"max_queriers_per_user"`
 
 	// Store-gateway.
 	StoreGatewayTenantShardSize int `yaml:"store_gateway_tenant_shard_size"`
@@ -108,6 +109,7 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 	f.IntVar(&l.MaxQueryParallelism, "querier.max-query-parallelism", 14, "Maximum number of queries will be scheduled in parallel by the frontend.")
 	f.IntVar(&l.CardinalityLimit, "store.cardinality-limit", 1e5, "Cardinality limit for index queries. This limit is ignored when running the Cortex blocks storage. 0 to disable.")
 	f.DurationVar(&l.MaxCacheFreshness, "frontend.max-cache-freshness", 1*time.Minute, "Most recent allowed cacheable result per-tenant, to prevent caching very recent results that might still be in flux.")
+	f.IntVar(&l.MaxQueriersPerUser, "frontend.max-queriers-per-user", 0, "Maximum number of queriers that can handle requests for single user. If set to 0, or value less than number of available queriers, all queriers will handle given user's requests. Each frontend will select the same queriers (if they are connected to all frontends). Note that this only works with queriers connecting to the query-frontend, not when using downstream URL.")
 
 	f.StringVar(&l.PerTenantOverrideConfig, "limits.per-user-override-config", "", "File name of per-user overrides. [deprecated, use -runtime-config.file instead]")
 	f.DurationVar(&l.PerTenantOverridePeriod, "limits.per-user-override-period", 10*time.Second, "Period with which to reload the overrides. [deprecated, use -runtime-config.reload-period instead]")
@@ -293,6 +295,11 @@ func (o *Overrides) MaxQueryLength(userID string) time.Duration {
 // MaxCacheFreshness returns the limit of the length (in time) of a query.
 func (o *Overrides) MaxCacheFreshness(userID string) time.Duration {
 	return o.getOverridesForUser(userID).MaxCacheFreshness
+}
+
+// MaxQueriersPerUser returns the maximum number of queriers that can handle requests for this user.
+func (o *Overrides) MaxQueriersPerUser(userID string) int {
+	return o.getOverridesForUser(userID).MaxQueriersPerUser
 }
 
 // MaxQueryParallelism returns the limit to the number of sub-queries the
